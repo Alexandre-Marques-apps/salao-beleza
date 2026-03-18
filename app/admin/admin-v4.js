@@ -520,9 +520,12 @@ export default function AdminPanel() {
                           {profissionais.map(p=>{
                             const cel = getCelula(h, p.nome)
                             const dentroExp = h>=p.horarioInicio&&h<=p.horarioFim
-                            // célula disponível para agendar se dentro do expediente e sem atendimento
-                            const disponivel = dentroExp&&!cel
-                            // cor do card baseada no status
+                            const passado   = !isFuturo(agendaData, h)
+                            // cinza: fora do expediente OU horário passado sem agendamento
+                            const cinza     = !dentroExp || (passado && !cel)
+                            const disponivel= dentroExp && !passado && !cel
+
+                            // cor do card por status
                             const cardBg = cel?.status==='finalizado'
                               ? 'linear-gradient(135deg,#c8e6c9,#a5d6a7)'
                               : cel?.status==='cancelado'
@@ -531,35 +534,50 @@ export default function AdminPanel() {
                             const cardColor = cel?.status==='finalizado' ? '#1b5e20'
                               : cel?.status==='cancelado' ? '#b71c1c'
                               : '#c2185b'
+
                             return(
                               <td key={p.id}
-                                style={{background:!dentroExp?'#fafafa':undefined,cursor:disponivel?'pointer':'default',position:'relative'}}
+                                style={{
+                                  background: cinza ? '#f0f0f0' : undefined,
+                                  cursor: disponivel ? 'pointer' : 'default',
+                                  position: 'relative',
+                                }}
                                 onClick={()=>{
                                   if(!disponivel) return
-                                  setForm({cliente:'',servico:'',profissional:p.nome,data:agendaData,horario:h,status:'agendado',valorOriginal:'',valorCobrado:'',pago:false})
-                                  setModal({type:'agendamento'});setFormErr('')
+                                  // abre modal com profissional e horário já preenchidos — não exibe campo profissional
+                                  setForm({
+                                    cliente:'', servico:'',
+                                    profissional: p.nome,
+                                    profissionalFixo: true,  // flag para esconder o campo no modal
+                                    data: agendaData, horario: h,
+                                    status:'agendado', valorOriginal:'', valorCobrado:'', pago:false
+                                  })
+                                  setModal({type:'agendamento'}); setFormErr('')
                                 }}>
-                                {/* célula vaga dentro do expediente — mostra + ao hover */}
-                                {disponivel&&(
-                                  <div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',opacity:0,transition:'opacity .15s',fontSize:18,color:'rgba(233,30,99,.3)'}}
-                                    onMouseEnter={e=>e.currentTarget.style.opacity=1}
-                                    onMouseLeave={e=>e.currentTarget.style.opacity=0}>
-                                    +
-                                  </div>
+
+                                {/* ícone + em células disponíveis */}
+                                {disponivel && (
+                                  <div style={{width:'100%',height:'100%',minHeight:34,display:'flex',alignItems:'center',justifyContent:'center',color:'rgba(233,30,99,.25)',fontSize:20,fontWeight:300}}>+</div>
                                 )}
-                                {!dentroExp&&!cel&&<div style={{fontSize:9,color:'rgba(0,0,0,.2)',textAlign:'center',paddingTop:8}}>—</div>}
+
+                                {/* cinza sem agendamento */}
+                                {cinza && !cel && (
+                                  <div style={{width:'100%',height:'100%',minHeight:34}}/>
+                                )}
+
+                                {/* card de agendamento */}
                                 {cel&&(
-                                  <div style={{background:cardBg,borderRadius:6,padding:'4px 6px',cursor:'pointer',position:'relative'}}
-                                    onClick={e=>{e.stopPropagation();setForm({...cel});setModal({type:'agendamento'});setFormErr('')}}>
-                                    <div style={{fontSize:11,fontWeight:700,color:cardColor,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',paddingRight:18}}>{cel.cliente}</div>
-                                    <div style={{fontSize:10,color:'rgba(0,0,0,.5)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{cel.servico}</div>
+                                  <div style={{background:cardBg,borderRadius:6,padding:'5px 6px 5px 6px',cursor:'pointer',position:'relative',minHeight:34}}
+                                    onClick={e=>{e.stopPropagation();setForm({...cel,profissionalFixo:false});setModal({type:'agendamento'});setFormErr('')}}>
+                                    <div style={{fontSize:11,fontWeight:700,color:cardColor,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',paddingRight:20}}>{cel.cliente}</div>
+                                    <div style={{fontSize:10,color:'rgba(0,0,0,.55)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{cel.servico}</div>
                                     {cel.valorCobrado>0&&<div style={{fontSize:10,fontWeight:600,color:cardColor}}>R$ {cel.valorCobrado}</div>}
                                     <span style={{padding:'1px 5px',borderRadius:8,fontSize:9,fontWeight:600,background:statusConfig[cel.status]?.bg,color:statusConfig[cel.status]?.color,display:'inline-block',marginTop:2}}>{statusConfig[cel.status]?.label}</span>
-                                    {/* BOTÃO LIXEIRA */}
+                                    {/* LIXEIRA — sempre visível, canto superior direito */}
                                     <button
-                                      onClick={e=>{e.stopPropagation();deleteAgendamento(cel.id)}}
-                                      style={{position:'absolute',top:3,right:3,background:'rgba(198,40,40,.15)',border:'none',borderRadius:4,width:18,height:18,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,color:'#c62828',lineHeight:1}}
-                                      title="Excluir agendamento">
+                                      onClick={e=>{e.stopPropagation();if(window.confirm('Excluir este agendamento?'))deleteAgendamento(cel.id)}}
+                                      style={{position:'absolute',top:3,right:3,background:'rgba(198,40,40,.18)',border:'none',borderRadius:4,width:20,height:20,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,color:'#c62828',flexShrink:0}}
+                                      title="Excluir">
                                       🗑
                                     </button>
                                   </div>
@@ -812,25 +830,41 @@ export default function AdminPanel() {
               <option value="">Selecionar...</option>
               {clientes.map(c=><option key={c.id}>{c.nome}</option>)}
             </Sel>
-            <Lbl>Profissional *</Lbl>
-            <Sel value={form.profissional||''} onChange={v=>{setForm(f=>({...f,profissional:v,servico:'',valorOriginal:'',valorCobrado:''}));setFormErr('')}}>
-              <option value="">Selecionar...</option>
-              {profissionais.map(p=><option key={p.id}>{p.nome} ({p.especialidade})</option>)}
-            </Sel>
+
+            {/* Profissional: só exibe se não veio de clique na célula */}
+            {form.profissionalFixo ? (
+              <div style={{background:'#fce4ec',padding:'10px 14px',borderRadius:8,fontSize:13,color:'#c2185b',marginTop:14,fontWeight:600}}>
+                👤 Profissional: <strong>{form.profissional}</strong> · 🕐 {form.horario}
+              </div>
+            ) : (
+              <>
+                <Lbl>Profissional *</Lbl>
+                <Sel value={form.profissional||''} onChange={v=>{setForm(f=>({...f,profissional:v,servico:'',valorOriginal:'',valorCobrado:''}));setFormErr('')}}>
+                  <option value="">Selecionar...</option>
+                  {profissionais.map(p=><option key={p.id}>{p.nome} ({p.especialidade})</option>)}
+                </Sel>
+              </>
+            )}
+
             <Lbl>Serviço *{form.profissional&&<span style={{fontSize:10,color:'rgba(0,0,0,.4)',letterSpacing:0,textTransform:'none'}}> — compatível com {form.profissional.split(' ')[0]}</span>}</Lbl>
             <Sel value={form.servico||''} onChange={onServicoChange}>
               <option value="">Selecionar...</option>
               {servicosDoProf(form.profissional?.split(' ')[0]||'').map(s=><option key={s.id}>{s.nome}</option>)}
             </Sel>
-            <Lbl>Data *</Lbl>
-            <input type="date" min={hojeISO()} value={form.data?.split('/').reverse().join('-')||''}
-              onChange={e=>{const[y,m,d]=e.target.value.split('-');setF('data')(`${d}/${m}/${y}`)}}
-              style={{width:'100%',padding:'11px 13px',border:'1.5px solid rgba(233,30,99,.2)',borderRadius:10,fontFamily:'Montserrat,sans-serif',fontSize:13,outline:'none',background:'#fafafa'}}/>
-            <Lbl>Horário *{form.profissional&&form.data&&<span style={{fontSize:10,color:'rgba(0,0,0,.4)',letterSpacing:0,textTransform:'none'}}> — disponíveis para {form.profissional.split(' ')[0]}</span>}</Lbl>
-            <Sel value={form.horario||''} onChange={setF('horario')}>
-              <option value="">Selecionar...</option>
-              {horariosDisponiveis(form.profissional?.split(' ')[0]||'', form.data||'').map(h=><option key={h}>{h}</option>)}
-            </Sel>
+
+            {/* Data: só exibe se não veio de clique na célula (data já está preenchida) */}
+            {!form.profissionalFixo && (<>
+              <Lbl>Data *</Lbl>
+              <input type="date" min={hojeISO()} value={form.data?.split('/').reverse().join('-')||''}
+                onChange={e=>{const[y,m,d]=e.target.value.split('-');setF('data')(`${d}/${m}/${y}`)}}
+                style={{width:'100%',padding:'11px 13px',border:'1.5px solid rgba(233,30,99,.2)',borderRadius:10,fontFamily:'Montserrat,sans-serif',fontSize:13,outline:'none',background:'#fafafa'}}/>
+              <Lbl>Horário *{form.profissional&&form.data&&<span style={{fontSize:10,color:'rgba(0,0,0,.4)',letterSpacing:0,textTransform:'none'}}> — disponíveis para {form.profissional.split(' ')[0]}</span>}</Lbl>
+              <Sel value={form.horario||''} onChange={setF('horario')}>
+                <option value="">Selecionar...</option>
+                {horariosDisponiveis(form.profissional?.split(' ')[0]||'', form.data||'').map(h=><option key={h}>{h}</option>)}
+              </Sel>
+            </>)}
+
             <Alerta cor="azul">💡 O valor do serviço será registrado automaticamente no fechamento do atendimento.</Alerta>
           </>)}
 
