@@ -520,23 +520,48 @@ export default function AdminPanel() {
                           {profissionais.map(p=>{
                             const cel = getCelula(h, p.nome)
                             const dentroExp = h>=p.horarioInicio&&h<=p.horarioFim
-                            const futuro = isFuturo(agendaData,h)
-                            const disponivel = dentroExp&&futuro&&!cel
+                            // célula disponível para agendar se dentro do expediente e sem atendimento
+                            const disponivel = dentroExp&&!cel
+                            // cor do card baseada no status
+                            const cardBg = cel?.status==='finalizado'
+                              ? 'linear-gradient(135deg,#c8e6c9,#a5d6a7)'
+                              : cel?.status==='cancelado'
+                              ? 'linear-gradient(135deg,#ffcdd2,#ef9a9a)'
+                              : 'linear-gradient(135deg,#fce4ec,#f8bbd0)'
+                            const cardColor = cel?.status==='finalizado' ? '#1b5e20'
+                              : cel?.status==='cancelado' ? '#b71c1c'
+                              : '#c2185b'
                             return(
                               <td key={p.id}
-                                style={{background:!dentroExp?'#fafafa':undefined,cursor:disponivel?'pointer':'default'}}
+                                style={{background:!dentroExp?'#fafafa':undefined,cursor:disponivel?'pointer':'default',position:'relative'}}
                                 onClick={()=>{
                                   if(!disponivel) return
                                   setForm({cliente:'',servico:'',profissional:p.nome,data:agendaData,horario:h,status:'agendado',valorOriginal:'',valorCobrado:'',pago:false})
                                   setModal({type:'agendamento'});setFormErr('')
                                 }}>
+                                {/* célula vaga dentro do expediente — mostra + ao hover */}
+                                {disponivel&&(
+                                  <div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',opacity:0,transition:'opacity .15s',fontSize:18,color:'rgba(233,30,99,.3)'}}
+                                    onMouseEnter={e=>e.currentTarget.style.opacity=1}
+                                    onMouseLeave={e=>e.currentTarget.style.opacity=0}>
+                                    +
+                                  </div>
+                                )}
                                 {!dentroExp&&!cel&&<div style={{fontSize:9,color:'rgba(0,0,0,.2)',textAlign:'center',paddingTop:8}}>—</div>}
                                 {cel&&(
-                                  <div className="cell-it" onClick={e=>{e.stopPropagation();setForm({...cel});setModal({type:'agendamento'});setFormErr('')}}>
-                                    <div className="cell-nm">{cel.cliente}</div>
-                                    <div className="cell-sv">{cel.servico}</div>
-                                    <div style={{fontSize:10,fontWeight:600,color:'#c2185b'}}>R$ {cel.valorCobrado}</div>
-                                    <span style={{...{padding:'1px 5px',borderRadius:8,fontSize:9,fontWeight:600},background:statusConfig[cel.status]?.bg,color:statusConfig[cel.status]?.color}}>{statusConfig[cel.status]?.label}</span>
+                                  <div style={{background:cardBg,borderRadius:6,padding:'4px 6px',cursor:'pointer',position:'relative'}}
+                                    onClick={e=>{e.stopPropagation();setForm({...cel});setModal({type:'agendamento'});setFormErr('')}}>
+                                    <div style={{fontSize:11,fontWeight:700,color:cardColor,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',paddingRight:18}}>{cel.cliente}</div>
+                                    <div style={{fontSize:10,color:'rgba(0,0,0,.5)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{cel.servico}</div>
+                                    {cel.valorCobrado>0&&<div style={{fontSize:10,fontWeight:600,color:cardColor}}>R$ {cel.valorCobrado}</div>}
+                                    <span style={{padding:'1px 5px',borderRadius:8,fontSize:9,fontWeight:600,background:statusConfig[cel.status]?.bg,color:statusConfig[cel.status]?.color,display:'inline-block',marginTop:2}}>{statusConfig[cel.status]?.label}</span>
+                                    {/* BOTÃO LIXEIRA */}
+                                    <button
+                                      onClick={e=>{e.stopPropagation();deleteAgendamento(cel.id)}}
+                                      style={{position:'absolute',top:3,right:3,background:'rgba(198,40,40,.15)',border:'none',borderRadius:4,width:18,height:18,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,color:'#c62828',lineHeight:1}}
+                                      title="Excluir agendamento">
+                                      🗑
+                                    </button>
                                   </div>
                                 )}
                               </td>
@@ -566,20 +591,23 @@ export default function AdminPanel() {
                   : <table className="tbl">
                       <thead><tr><th>Hora</th><th>Cliente</th><th>Serviço</th><th>Prof.</th><th>Status</th><th>Vlr orig.</th><th>Vlr cobrado</th><th>Ações</th></tr></thead>
                       <tbody>{agendaHojeComCancelados.map(a=>(
-                        <tr key={a.id}>
+                        <tr key={a.id} style={{background:a.status==='finalizado'?'#f1f8e9':undefined}}>
                           <td style={{fontWeight:600,color:'#c2185b'}}>{a.horario}</td>
                           <td style={{fontWeight:600}}>{a.cliente}</td>
                           <td style={{fontSize:12,color:'rgba(0,0,0,.6)'}}>{a.servico}</td>
                           <td>{a.profissional}</td>
                           <td><span className="bdg" style={{background:statusConfig[a.status]?.bg,color:statusConfig[a.status]?.color}}>{statusConfig[a.status]?.label}</span></td>
-                          <td style={{color:'rgba(0,0,0,.5)'}}>R$ {a.valorOriginal}</td>
-                          <td style={{fontWeight:600,color:a.desconto>0?'#c62828':'#c2185b'}}>R$ {a.valorCobrado}{a.desconto>0&&<span style={{fontSize:10,color:'#c62828',marginLeft:4}}>(-R${a.desconto})</span>}</td>
-                          <td style={{display:'flex',gap:5,flexWrap:'wrap'}}>
+                          <td style={{color:'rgba(0,0,0,.5)'}}>R$ {a.valorOriginal||'—'}</td>
+                          <td style={{fontWeight:600,color:a.desconto>0?'#c62828':a.status==='finalizado'?'#2e7d32':'#c2185b'}}>
+                            {a.valorCobrado>0?`R$ ${a.valorCobrado}`:'—'}
+                            {a.desconto>0&&<span style={{fontSize:10,color:'#c62828',marginLeft:4}}>(-R${a.desconto})</span>}
+                          </td>
+                          <td style={{display:'flex',gap:5,flexWrap:'wrap',alignItems:'center'}}>
                             {a.status!=='finalizado'&&a.status!=='cancelado'&&(<>
                               {(a.status==='em_atendimento'||a.status==='confirmado')&&<button className="btn-gr" onClick={()=>abrirFechamento(a)}>✓ Fechar</button>}
                               <button className="btn-ot" onClick={()=>{setForm({...a});setModal({type:'agendamento'});setFormErr('')}}>Editar</button>
-                              <button className="btn-rd" onClick={()=>deleteAgendamento(a.id)}>✕</button>
                             </>)}
+                            <button className="btn-rd" style={{padding:'5px 8px'}} onClick={()=>deleteAgendamento(a.id)} title="Excluir">🗑</button>
                           </td>
                         </tr>
                       ))}</tbody>
