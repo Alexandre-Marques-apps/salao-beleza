@@ -1,8 +1,12 @@
-jsexport default function Home() {
+export const metadata = {
+  title: 'Salão de Beleza',
+  description: 'Agendamento online',
+}
+
+export default function RootLayout({ children }) {
   return (
-    <main>
-      <h1>Salão de Beleza</h1>
-      <p>Em construção...</p>
-    </main>
+    <html lang="pt-BR">
+      <body>{children}</body>
+    </html>
   )
 }
