@@ -1,5 +1,6 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { supabase } from '../../lib/supabase'
 
 const ADMIN_USER = 'Alexandre'
 const ADMIN_PASS = '123456'
@@ -17,12 +18,6 @@ function hojeStr() {
   return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`
 }
 function hojeISO() { return new Date().toISOString().slice(0,10) }
-function isFuturo(data, horario) {
-  if(!data||!horario) return false
-  const [dd,mm,yyyy] = data.split('/')
-  const [hh,min] = horario.split(':')
-  return new Date(Number(yyyy),Number(mm)-1,Number(dd),Number(hh),Number(min)) > new Date()
-}
 function dmyToISO(dmy) {
   if(!dmy) return ''
   const [dd,mm,yyyy] = dmy.split('/')
@@ -33,53 +28,22 @@ function isoToDmy(iso) {
   const [yyyy,mm,dd] = iso.split('-')
   return `${dd}/${mm}/${yyyy}`
 }
+function isFuturo(data, horario) {
+  if(!data||!horario) return false
+  const [dd,mm,yyyy] = data.split('/')
+  const [hh,min] = horario.split(':')
+  return new Date(Number(yyyy),Number(mm)-1,Number(dd),Number(hh),Number(min)) > new Date()
+}
 
-const CATS = { 'Corte':'cabelereiro','Barba':'cabelereiro','Coloração':'cabelereiro','Tratamento':'cabelereiro','Unhas':'manicure','Estética':'estetica' }
+const P='#e91e63', PD='#c2185b', PL='#fce4ec'
 
-const initServicos = [
-  {id:1,nome:'Corte Masculino',categoria:'Corte',      tipo:'cabelereiro',preco:40, duracao:30},
-  {id:2,nome:'Corte Feminino', categoria:'Corte',      tipo:'cabelereiro',preco:90, duracao:60},
-  {id:3,nome:'Barba',          categoria:'Barba',      tipo:'cabelereiro',preco:30, duracao:20},
-  {id:4,nome:'Escova',         categoria:'Tratamento', tipo:'cabelereiro',preco:60, duracao:40},
-  {id:5,nome:'Manicure',       categoria:'Unhas',      tipo:'manicure',   preco:35, duracao:30},
-  {id:6,nome:'Coloração',      categoria:'Coloração',  tipo:'cabelereiro',preco:150,duracao:90},
-  {id:7,nome:'Pedicure',       categoria:'Unhas',      tipo:'manicure',   preco:40, duracao:40},
-]
-
-const initProfs = [
-  {id:1,nome:'Ana',   especialidade:'Cabelereira',tipo:'cabelereiro',comissao:40,senha:'123456',status:'disponivel',hi:'08:00',hf:'18:00'},
-  {id:2,nome:'Carlos',especialidade:'Barbeiro',   tipo:'cabelereiro',comissao:35,senha:'123456',status:'disponivel',hi:'09:00',hf:'17:00'},
-  {id:3,nome:'Paula', especialidade:'Manicure',   tipo:'manicure',   comissao:50,senha:'123456',status:'disponivel',hi:'09:00',hf:'17:00'},
-  {id:4,nome:'Carla', especialidade:'Cabelereira',tipo:'cabelereiro',comissao:40,senha:'123456',status:'ausente',   hi:'08:00',hf:'18:00'},
-]
-
-const initClientes = [
-  {id:1,nome:'Maria Silva',  telefone:'(11) 99999-0001',email:'maria@email.com',   visitas:12,ultimo:hojeStr(),gasto:1080},
-  {id:2,nome:'João Costa',   telefone:'(11) 99999-0002',email:'joao@email.com',    visitas:8, ultimo:hojeStr(),gasto:320},
-  {id:3,nome:'Carla Mendes', telefone:'(11) 99999-0003',email:'carla@email.com',   visitas:20,ultimo:hojeStr(),gasto:700},
-  {id:4,nome:'Pedro Alves',  telefone:'(11) 99999-0004',email:'pedro@email.com',   visitas:5, ultimo:hojeStr(),gasto:200},
-  {id:5,nome:'Fernanda Lima',telefone:'(11) 99999-0005',email:'fernanda@email.com',visitas:15,ultimo:hojeStr(),gasto:900},
-]
-
-const initAgs = [
-  {id:1,cliente:'Maria Silva',  servico:'Corte Feminino', profissional:'Ana',   data:hojeStr(),horario:'09:00',status:'confirmado',    valorOriginal:90, valorCobrado:90, desconto:0,pago:false},
-  {id:2,cliente:'João Costa',   servico:'Barba',          profissional:'Carlos',data:hojeStr(),horario:'09:30',status:'agendado',       valorOriginal:30, valorCobrado:30, desconto:0,pago:false},
-  {id:3,cliente:'Carla Mendes', servico:'Manicure',       profissional:'Paula', data:hojeStr(),horario:'10:00',status:'em_atendimento', valorOriginal:35, valorCobrado:35, desconto:0,pago:false},
-  {id:4,cliente:'Pedro Alves',  servico:'Corte Masculino',profissional:'Carlos',data:hojeStr(),horario:'11:00',status:'agendado',       valorOriginal:40, valorCobrado:40, desconto:0,pago:false},
-  {id:5,cliente:'Fernanda Lima',servico:'Escova',         profissional:'Ana',   data:hojeStr(),horario:'13:00',status:'agendado',       valorOriginal:60, valorCobrado:60, desconto:0,pago:false},
-  {id:6,cliente:'João Costa',   servico:'Corte Masculino',profissional:'Carlos',data:hojeStr(),horario:'14:00',status:'finalizado',     valorOriginal:40, valorCobrado:40, desconto:0,pago:true},
-]
-
-const P = '#e91e63', PD = '#c2185b', PL = '#fce4ec'
-
-// ── MODAL ──────────────────────────────────────────────────
-function Modal({title,onClose,children,size='md'}) {
-  const w = size==='lg'?660:460
+// ── COMPONENTES UI ─────────────────────────────────────
+function Modal({title,onClose,children}) {
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',zIndex:999,display:'flex',alignItems:'center',justifyContent:'center',padding:12,overflowY:'auto'}}>
-      <div style={{background:'#fff',borderRadius:20,width:'100%',maxWidth:w,maxHeight:'94vh',overflowY:'auto',boxShadow:'0 24px 80px rgba(0,0,0,.18)',animation:'modalIn .2s ease'}}>
-        <div style={{padding:'16px 20px',borderBottom:`1px solid ${PL}`,display:'flex',alignItems:'center',justifyContent:'space-between',position:'sticky',top:0,background:'#fff',zIndex:1,borderRadius:'20px 20px 0 0'}}>
-          <div style={{fontFamily:'Playfair Display,serif',fontSize:16,color:'#1a1a1a'}}>{title}</div>
+      <div style={{background:'#fff',borderRadius:20,width:'100%',maxWidth:460,maxHeight:'94vh',overflowY:'auto',boxShadow:'0 24px 80px rgba(0,0,0,.18)'}}>
+        <div style={{padding:'16px 20px',borderBottom:`1px solid ${PL}`,display:'flex',alignItems:'center',justifyContent:'space-between',position:'sticky',top:0,background:'#fff',zIndex:1}}>
+          <div style={{fontFamily:'Playfair Display,serif',fontSize:16}}>{title}</div>
           <button onClick={onClose} style={{background:PL,border:'none',borderRadius:'50%',width:28,height:28,cursor:'pointer',fontSize:16,color:PD,display:'flex',alignItems:'center',justifyContent:'center'}}>×</button>
         </div>
         <div style={{padding:20}}>{children}</div>
@@ -87,147 +51,304 @@ function Modal({title,onClose,children,size='md'}) {
     </div>
   )
 }
-
 function Lbl({children}){return <label style={{display:'block',fontSize:10,fontWeight:700,letterSpacing:2,textTransform:'uppercase',color:'rgba(194,24,91,.7)',marginBottom:6,marginTop:14}}>{children}</label>}
-function Inp({value,onChange,type='text',placeholder,disabled}){return <input type={type} value={value||''} onChange={e=>onChange&&onChange(e.target.value)} placeholder={placeholder} disabled={disabled} style={{width:'100%',padding:'12px 14px',border:`1.5px solid ${disabled?'rgba(233,30,99,.1)':'rgba(233,30,99,.25)'}`,borderRadius:10,fontFamily:'Montserrat,sans-serif',fontSize:13,outline:'none',background:disabled?'#f8f8f8':'#fff',color:disabled?'#aaa':'#1a1a1a',transition:'border .2s'}}/>}
-function Sel({value,onChange,children,disabled}){return <select value={value||''} onChange={e=>onChange&&onChange(e.target.value)} disabled={disabled} style={{width:'100%',padding:'12px 14px',border:`1.5px solid ${disabled?'rgba(233,30,99,.1)':'rgba(233,30,99,.25)'}`,borderRadius:10,fontFamily:'Montserrat,sans-serif',fontSize:13,outline:'none',background:disabled?'#f8f8f8':'#fff',color:disabled?'#aaa':'#1a1a1a'}}>{children}</select>}
-function Box({cor,children}){const s={amarelo:{bg:'#fff8e1',c:'#e65100'},vermelho:{bg:'#ffebee',c:'#c62828'},verde:{bg:'#e8f5e9',c:'#1b5e20'},azul:{bg:'#e3f2fd',c:'#0d47a1'},rosa:{bg:PL,c:PD}};const t=s[cor]||s.amarelo;return <div style={{background:t.bg,color:t.c,padding:'10px 14px',borderRadius:10,fontSize:12,marginTop:8,lineHeight:1.5}}>{children}</div>}
+function Inp({value,onChange,type='text',placeholder,disabled}){
+  return <input type={type} value={value??''} onChange={e=>onChange&&onChange(e.target.value)} placeholder={placeholder} disabled={disabled}
+    style={{width:'100%',padding:'12px 14px',border:`1.5px solid ${disabled?'rgba(233,30,99,.1)':'rgba(233,30,99,.25)'}`,borderRadius:10,fontFamily:'Montserrat,sans-serif',fontSize:13,outline:'none',background:disabled?'#f8f8f8':'#fff',color:disabled?'#aaa':'#1a1a1a'}}/>
+}
+function Sel({value,onChange,children,disabled}){
+  return <select value={value??''} onChange={e=>onChange&&onChange(e.target.value)} disabled={disabled}
+    style={{width:'100%',padding:'12px 14px',border:`1.5px solid ${disabled?'rgba(233,30,99,.1)':'rgba(233,30,99,.25)'}`,borderRadius:10,fontFamily:'Montserrat,sans-serif',fontSize:13,outline:'none',background:disabled?'#f8f8f8':'#fff'}}>{children}</select>
+}
+function Box({cor,children}){
+  const s={amarelo:{bg:'#fff8e1',c:'#e65100'},vermelho:{bg:'#ffebee',c:'#c62828'},verde:{bg:'#e8f5e9',c:'#1b5e20'},azul:{bg:'#e3f2fd',c:'#0d47a1'},rosa:{bg:PL,c:PD}}
+  const t=s[cor]||s.amarelo
+  return <div style={{background:t.bg,color:t.c,padding:'10px 14px',borderRadius:10,fontSize:12,marginTop:8,lineHeight:1.5}}>{children}</div>
+}
+function Spin(){return <div style={{textAlign:'center',padding:40,color:'rgba(0,0,0,.3)',fontSize:13}}>Carregando...</div>}
 
 export default function Admin() {
-  // AUTH
-  const [ok,    setOk]    = useState(false)
-  const [lu,    setLu]    = useState('')
-  const [lp,    setLp]    = useState('')
-  const [lerr,  setLerr]  = useState('')
+  const [ok,     setOk]     = useState(false)
+  const [lu,     setLu]     = useState('')
+  const [lp,     setLp]     = useState('')
+  const [lerr,   setLerr]   = useState('')
+  const [tab,    setTab]    = useState('dashboard')
+  const [sbOpen, setSbOpen] = useState(false)
+  const [agData, setAgData] = useState(hojeStr())
+  const [busca,  setBusca]  = useState('')
+  const [toast,  setToast]  = useState(null)
+  const [modal,  setModal]  = useState(null)
+  const [form,   setForm]   = useState({})
+  const [ferr,   setFerr]   = useState('')
+  const [loading,setLoading]= useState(false)
 
-  // NAV
-  const [tab,   setTab]   = useState('dashboard')
-  const [sbOpen,setSbOpen]= useState(false) // sidebar fechada por padrão no mobile
+  // dados do Supabase
+  const [ags,    setAgs]    = useState([])
+  const [cls,    setCls]    = useState([])
+  const [profs,  setProfs]  = useState([])
+  const [srvs,   setSrvs]   = useState([])
+  const [cats,   setCats]   = useState([])
 
-  // DATA
-  const [ags,   setAgs]   = useState(initAgs)
-  const [cls,   setCls]   = useState(initClientes)
-  const [profs, setProfs] = useState(initProfs)
-  const [srvs,  setSrvs]  = useState(initServicos)
-
-  // UI
-  const [agData,setAgData]= useState(hojeStr())
-  const [busca, setBusca] = useState('')
-  const [toast, setToast] = useState(null)
-  const [modal, setModal] = useState(null)
-  const [form,  setForm]  = useState({})
-  const [ferr,  setFerr]  = useState('')
-
-  function shToast(msg,ok=true){setToast({msg,ok});setTimeout(()=>setToast(null),2800)}
+  function shToast(msg,ok=true){setToast({msg,ok});setTimeout(()=>setToast(null),3000)}
   function F(k){return v=>setForm(f=>({...f,[k]:v}))}
   function closeModal(){setModal(null);setFerr('')}
   function openModal(t,data={}){setForm({...data});setModal(t);setFerr('')}
+
+  // ── CARREGAR DADOS ──────────────────────────────────
+  async function load() {
+    setLoading(true)
+    try {
+      const [
+        {data:agsD},
+        {data:clsD},
+        {data:profsD},
+        {data:srvsD},
+        {data:catsD},
+      ] = await Promise.all([
+        supabase.from('bookings').select('*').order('booking_date').order('start_time'),
+        supabase.from('profiles').select('*').eq('role','client'),
+        supabase.from('professionals').select('*, profiles(full_name, phone, role)').order('id'),
+        supabase.from('services').select('*, service_categories(name)').eq('active',true).order('name'),
+        supabase.from('service_categories').select('*').order('name'),
+      ])
+      setAgs(agsD||[])
+      setCls(clsD||[])
+      setProfs(profsD||[])
+      setSrvs(srvsD||[])
+      setCats(catsD||[])
+    } catch(e) {
+      shToast('Erro ao carregar dados',false)
+    }
+    setLoading(false)
+  }
+
+  useEffect(()=>{ if(ok) load() },[ok])
 
   function login(){
     if(lu===ADMIN_USER&&lp===ADMIN_PASS){setOk(true);setLerr('')}
     else setLerr('Usuário ou senha incorretos')
   }
 
-  // compatibilidade serviço x profissional
-  function compats(nomeProf){
-    const p=profs.find(x=>x.nome===nomeProf.split(' ')[0])
-    if(!p) return srvs
-    return srvs.filter(s=>s.tipo===p.tipo)
+  // ── helpers de formato ──────────────────────────────
+  // bookings usa booking_date (YYYY-MM-DD) e start_time (HH:MM)
+  function agToRow(a){
+    return {
+      data: isoToDmy(a.booking_date),
+      horario: a.start_time?.slice(0,5)||'',
+      cliente: a.client_name||a.client_id||'',
+      servico: a.service_name||a.service_id||'',
+      profissional: a.professional_name||a.professional_id||'',
+      status: a.status,
+      valorOriginal: a.price_charged||0,
+      valorCobrado: a.price_charged||0,
+      desconto: 0,
+      pago: a.status==='completed',
+      id: a.id,
+      _raw: a,
+    }
+  }
+
+  // ── AGENDAMENTOS via Supabase ───────────────────────
+  async function saveAg() {
+    setFerr('')
+    if(!form.cliente||!form.servico||!form.profissional||!form.data||!form.horario){
+      setFerr('Preencha todos os campos'); return
+    }
+
+    const prof  = profs.find(p=>p.profiles?.full_name===form.profissional||p.id===form.profissional)
+    const srv   = srvs.find(s=>s.name===form.servico||s.id===form.servico)
+    const client= cls.find(c=>c.full_name===form.cliente||c.id===form.cliente)
+
+    const payload = {
+      booking_date:   dmyToISO(form.data),
+      start_time:     form.horario+':00',
+      end_time:       form.horario+':00',
+      status:         'scheduled',
+      price_charged:  srv?.price||0,
+      // guardar nomes para exibição fácil
+      client_name:      form.cliente,
+      service_name:     form.servico,
+      professional_name: form.profissional,
+      client_id:        client?.id||null,
+      service_id:       srv?.id||null,
+      professional_id:  prof?.id||null,
+    }
+
+    if(form.id){
+      const {error}=await supabase.from('bookings').update(payload).eq('id',form.id)
+      if(error){setFerr('Erro ao salvar: '+error.message);return}
+    } else {
+      const {error}=await supabase.from('bookings').insert(payload)
+      if(error){setFerr('Erro ao salvar: '+error.message);return}
+    }
+    closeModal(); shToast('Agendamento salvo!'); load()
+  }
+
+  async function delAg(id){
+    if(!window.confirm('Excluir este agendamento?')) return
+    const {error}=await supabase.from('bookings').delete().eq('id',id)
+    if(error){shToast('Erro ao excluir',false);return}
+    shToast('Removido!'); load()
+  }
+
+  async function confirmarFechamento(){
+    if(!form.valorCobrado){setFerr('Informe o valor cobrado');return}
+    const {error}=await supabase.from('bookings').update({
+      status:'completed',
+      price_charged: Number(form.valorCobrado),
+    }).eq('id',form.id)
+    if(error){setFerr('Erro: '+error.message);return}
+    closeModal(); shToast('Atendimento finalizado!'); load()
+  }
+
+  // ── CLIENTES ────────────────────────────────────────
+  // clientes são profiles com role='client'
+  async function saveCl(){
+    if(!form.full_name){setFerr('Informe o nome');return}
+    if(form.id){
+      const {error}=await supabase.from('profiles').update({full_name:form.full_name,phone:form.phone}).eq('id',form.id)
+      if(error){setFerr('Erro: '+error.message);return}
+    } else {
+      // criar perfil direto (sem auth, apenas como cadastro)
+      const {error}=await supabase.from('profiles').insert({full_name:form.full_name,phone:form.phone||'',role:'client'})
+      if(error){setFerr('Erro: '+error.message);return}
+    }
+    closeModal(); shToast('Cliente salvo!'); load()
+  }
+
+  async function delCl(id){
+    if(!window.confirm('Excluir cliente?')) return
+    await supabase.from('profiles').delete().eq('id',id)
+    shToast('Removido!'); load()
+  }
+
+  // ── PROFISSIONAIS ────────────────────────────────────
+  async function saveProf(){
+    if(!form.full_name&&!form.specialty){setFerr('Informe os dados');return}
+    if(form.id){
+      // atualiza tabela professionals
+      const {error}=await supabase.from('professionals').update({
+        specialty:      form.specialty,
+        commission_pct: Number(form.commission_pct)||40,
+        active:         true,
+      }).eq('id',form.id)
+      if(error){setFerr('Erro: '+error.message);return}
+    } else {
+      // cria profile + professional
+      const {data:prof,error:e1}=await supabase.from('profiles').insert({
+        full_name: form.full_name,
+        phone:     form.phone||'',
+        role:      'professional',
+      }).select().single()
+      if(e1){setFerr('Erro: '+e1.message);return}
+      const {error:e2}=await supabase.from('professionals').insert({
+        user_id:        prof.id,
+        specialty:      form.specialty,
+        commission_pct: Number(form.commission_pct)||40,
+        active:         true,
+      })
+      if(e2){setFerr('Erro: '+e2.message);return}
+    }
+    closeModal(); shToast('Profissional salvo!'); load()
+  }
+
+  async function delProf(id){
+    if(!window.confirm('Remover profissional?')) return
+    await supabase.from('professionals').update({active:false}).eq('id',id)
+    shToast('Removido!'); load()
+  }
+
+  // ── SERVIÇOS ─────────────────────────────────────────
+  async function saveSrv(){
+    if(!form.name){setFerr('Informe o nome');return}
+    const cat=cats.find(c=>c.name===form.categoria||c.id===form.category_id)
+    const payload={
+      name:         form.name,
+      price:        Number(form.price)||0,
+      duration_min: Number(form.duration_min)||30,
+      category_id:  cat?.id||null,
+      active:       true,
+    }
+    if(form.id){
+      const {error}=await supabase.from('services').update(payload).eq('id',form.id)
+      if(error){setFerr('Erro: '+error.message);return}
+    } else {
+      const {error}=await supabase.from('services').insert(payload)
+      if(error){setFerr('Erro: '+error.message);return}
+    }
+    closeModal(); shToast('Serviço salvo!'); load()
+  }
+
+  async function delSrv(id){
+    if(!window.confirm('Excluir serviço?')) return
+    await supabase.from('services').update({active:false}).eq('id',id)
+    shToast('Removido!'); load()
+  }
+
+  // ── FILTROS ───────────────────────────────────────────
+  // normaliza agendamentos para exibição
+  const agRows = ags.map(a=>({
+    id:           a.id,
+    data:         isoToDmy(a.booking_date),
+    horario:      (a.start_time||'').slice(0,5),
+    cliente:      a.client_name||'',
+    servico:      a.service_name||'',
+    profissional: a.professional_name||'',
+    status:       a.status,
+    valorOriginal:Number(a.price_charged)||0,
+    valorCobrado: Number(a.price_charged)||0,
+    pago:         a.status==='completed',
+  }))
+
+  const agendaDia  = agRows.filter(a=>a.data===agData&&a.status!=='cancelled')
+  const hoje       = hojeStr()
+  const agHoje     = agRows.filter(a=>a.data===hoje&&a.status!=='cancelled')
+  const fatHoje    = agRows.filter(a=>a.data===hoje&&a.status==='completed').reduce((s,a)=>s+a.valorCobrado,0)
+  const fatMes     = agRows.filter(a=>a.status==='completed').reduce((s,a)=>s+a.valorCobrado,0)
+  const emAtend    = agRows.filter(a=>a.status==='in_progress').length
+
+  function getCel(h,nomP){return agendaDia.find(a=>a.horario===h&&a.profissional===nomP)}
+
+  const clsFilt = cls.filter(c=>
+    (c.full_name||'').toLowerCase().includes(busca.toLowerCase())||
+    (c.phone||'').includes(busca)
+  )
+
+  // serviços compatíveis com um profissional (por tipo de especialidade)
+  function srvCompat(nomeProf){
+    // simplificado: retorna todos os serviços
+    // numa versão futura pode filtrar por tipo
+    return srvs
   }
 
   function horariosLivres(nomeProf,data){
-    const p=profs.find(x=>x.nome===nomeProf?.split(' ')[0])
-    if(!p||!data) return []
+    if(!nomeProf||!data) return []
+    const prof=profs.find(p=>(p.profiles?.full_name||'').startsWith(nomeProf.split(' ')[0]))
     return HORARIOS.filter(h=>{
-      if(h<p.hi||h>p.hf) return false
       if(!isFuturo(data,h)) return false
-      return !ags.find(a=>a.profissional===p.nome&&a.data===data&&a.horario===h&&a.status!=='cancelado'&&a.id!==form.id)
+      return !agRows.find(a=>a.profissional===nomeProf&&a.data===data&&a.horario===h&&a.status!=='cancelled')
     })
   }
 
-  function onSrvChange(nome){
-    const s=srvs.find(x=>x.nome===nome)
-    setForm(f=>({...f,servico:nome,valorOriginal:s?s.preco:f.valorOriginal,valorCobrado:s?s.preco:f.valorCobrado}))
-    setFerr('')
-  }
-
-  // ── SALVAR AGENDAMENTO ─────────────────────────────────
-  function saveAg(){
-    if(!form.cliente||!form.servico||!form.profissional||!form.data||!form.horario){setFerr('Preencha todos os campos');return}
-    if(!form.id&&!isFuturo(form.data,form.horario)){setFerr('Data/horário já passaram');return}
-    const conflito=ags.find(a=>a.profissional===form.profissional&&a.data===form.data&&a.horario===form.horario&&a.status!=='cancelado'&&a.id!==form.id)
-    if(conflito){setFerr(`${form.profissional} já tem atendimento às ${form.horario}`);return}
-    if(form.id) setAgs(a=>a.map(x=>x.id===form.id?{...form}:x))
-    else setAgs(a=>[...a,{...form,id:Date.now(),status:'agendado',valorCobrado:form.valorOriginal,desconto:0,pago:false}])
-    closeModal();shToast('Agendamento salvo!')
-  }
-
-  // ── FECHAR ATENDIMENTO ─────────────────────────────────
-  function confirmarFechamento(){
-    if(!form.valorCobrado||Number(form.valorCobrado)<0){setFerr('Informe o valor cobrado');return}
-    const desc=Math.max(0,Number(form.valorOriginal)-Number(form.valorCobrado))
-    setAgs(a=>a.map(x=>x.id===form.id?{...x,status:'finalizado',valorCobrado:Number(form.valorCobrado),desconto:desc,pago:true}:x))
-    setCls(c=>c.map(x=>x.nome===form.cliente?{...x,visitas:x.visitas+1,gasto:x.gasto+Number(form.valorCobrado),ultimo:form.data}:x))
-    closeModal();shToast('Atendimento finalizado!')
-  }
-
-  function delAg(id){if(window.confirm('Excluir este agendamento?')){setAgs(a=>a.filter(x=>x.id!==id));shToast('Removido!')}}
-
-  function saveCl(){
-    if(!form.nome){setFerr('Informe o nome');return}
-    if(form.id) setCls(c=>c.map(x=>x.id===form.id?{...form}:x))
-    else setCls(c=>[...c,{...form,id:Date.now(),visitas:0,gasto:0,ultimo:'—'}])
-    closeModal();shToast('Cliente salvo!')
-  }
-
-  function saveProf(){
-    if(!form.nome){setFerr('Informe o nome');return}
-    if(form.id) setProfs(p=>p.map(x=>x.id===form.id?{...form}:x))
-    else setProfs(p=>[...p,{...form,id:Date.now(),senha:'123456'}])
-    closeModal();shToast('Profissional salvo!')
-  }
-
-  function saveSrv(){
-    if(!form.nome){setFerr('Informe o nome');return}
-    const tipo=CATS[form.categoria]||'cabelereiro'
-    if(form.id) setSrvs(s=>s.map(x=>x.id===form.id?{...form,tipo}:x))
-    else setSrvs(s=>[...s,{...form,id:Date.now(),tipo}])
-    closeModal();shToast('Serviço salvo!')
-  }
-
-  // ── MÉTRICAS ───────────────────────────────────────────
-  const hoje = hojeStr()
-  const fatHoje = ags.filter(a=>a.data===hoje&&a.status==='finalizado').reduce((s,a)=>s+(Number(a.valorCobrado)||0),0)
-  const fatMes  = ags.filter(a=>a.status==='finalizado').reduce((s,a)=>s+(Number(a.valorCobrado)||0),0)
-  const agHoje  = ags.filter(a=>a.data===hoje&&a.status!=='cancelado').length
-  const emAtend = ags.filter(a=>a.status==='em_atendimento').length
-
-  // agenda grade
-  const agendaDia = ags.filter(a=>a.data===agData&&a.status!=='cancelado')
-  function getCel(h,nomP){return agendaDia.find(a=>a.horario===h&&a.profissional===nomP)}
-
-  const clsFilt = cls.filter(c=>c.nome?.toLowerCase().includes(busca.toLowerCase())||c.telefone?.includes(busca))
-
-  const menus = [
-    {id:'dashboard',     icon:'◈', label:'Dashboard'},
-    {id:'agenda',        icon:'◷', label:'Agenda'},
-    {id:'clientes',      icon:'◉', label:'Clientes'},
-    {id:'profissionais', icon:'✦', label:'Profissionais'},
-    {id:'servicos',      icon:'✂', label:'Serviços'},
-    {id:'financeiro',    icon:'◎', label:'Financeiro'},
-    {id:'configuracoes', icon:'⊙', label:'Config.'},
+  const menus=[
+    {id:'dashboard',     icon:'◈',label:'Dashboard'},
+    {id:'agenda',        icon:'◷',label:'Agenda'},
+    {id:'clientes',      icon:'◉',label:'Clientes'},
+    {id:'profissionais', icon:'✦',label:'Profissionais'},
+    {id:'servicos',      icon:'✂',label:'Serviços'},
+    {id:'financeiro',    icon:'◎',label:'Financeiro'},
+    {id:'configuracoes', icon:'⊙',label:'Config.'},
   ]
 
-  // ── LOGIN ──────────────────────────────────────────────
+  // ── LOGIN ─────────────────────────────────────────────
   if(!ok) return (
     <>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Montserrat:wght@300;400;500;600&display=swap');
         *{margin:0;padding:0;box-sizing:border-box;}
-        body{font-family:'Montserrat',sans-serif;background:linear-gradient(135deg,#fce4ec 0%,#fff 60%);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px;}
-        @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+        body{font-family:'Montserrat',sans-serif;background:linear-gradient(135deg,#fce4ec,#fff);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px;}
       `}</style>
-      <div style={{background:'#fff',borderRadius:24,width:'100%',maxWidth:400,overflow:'hidden',boxShadow:'0 12px 50px rgba(233,30,99,.15)',animation:'fadeUp .4s ease'}}>
+      <div style={{background:'#fff',borderRadius:24,width:'100%',maxWidth:400,overflow:'hidden',boxShadow:'0 12px 50px rgba(233,30,99,.15)'}}>
         <div style={{background:`linear-gradient(135deg,${PL},#fff9fb)`,padding:'36px 28px 28px',textAlign:'center',borderBottom:`1px solid ${PL}`}}>
           <div style={{width:62,height:62,borderRadius:'50%',border:`2px solid ${P}`,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 14px',background:'#fff'}}>
             <span style={{fontFamily:'Playfair Display,serif',fontSize:15,fontWeight:700,color:P}}>JOU</span>
@@ -239,9 +360,9 @@ export default function Admin() {
           <Lbl>Usuário</Lbl><Inp value={lu} onChange={setLu} placeholder="Alexandre"/>
           <Lbl>Senha</Lbl>
           <input type="password" value={lp} onChange={e=>setLp(e.target.value)} onKeyDown={e=>e.key==='Enter'&&login()} placeholder="••••••"
-            style={{width:'100%',padding:'12px 14px',border:`1.5px solid rgba(233,30,99,.25)`,borderRadius:10,fontFamily:'Montserrat,sans-serif',fontSize:13,outline:'none',background:'#fff',marginBottom:4}}/>
+            style={{width:'100%',padding:'12px 14px',border:`1.5px solid rgba(233,30,99,.25)`,borderRadius:10,fontFamily:'Montserrat,sans-serif',fontSize:13,outline:'none',marginBottom:4}}/>
           {lerr&&<Box cor="vermelho">{lerr}</Box>}
-          <button onClick={login} style={{width:'100%',padding:15,background:`linear-gradient(135deg,${P},${PD})`,border:'none',borderRadius:12,fontFamily:'Montserrat,sans-serif',fontSize:11,fontWeight:700,letterSpacing:4,textTransform:'uppercase',color:'#fff',cursor:'pointer',marginTop:16,boxShadow:`0 4px 16px rgba(233,30,99,.3)`}}>
+          <button onClick={login} style={{width:'100%',padding:15,background:`linear-gradient(135deg,${P},${PD})`,border:'none',borderRadius:12,fontFamily:'Montserrat,sans-serif',fontSize:11,fontWeight:700,letterSpacing:4,textTransform:'uppercase',color:'#fff',cursor:'pointer',marginTop:16}}>
             Entrar
           </button>
         </div>
@@ -249,7 +370,7 @@ export default function Admin() {
     </>
   )
 
-  // ── PAINEL ─────────────────────────────────────────────
+  // ── PAINEL ────────────────────────────────────────────
   return (
     <>
       <style>{`
@@ -257,60 +378,24 @@ export default function Admin() {
         *{margin:0;padding:0;box-sizing:border-box;}
         body{font-family:'Montserrat',sans-serif;background:#fdf6f9;color:#1a1a1a;min-height:100vh;}
         @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
-        @keyframes modalIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
-        @keyframes slideIn{from{transform:translateX(-100%)}to{transform:translateX(0)}}
-
-        /* OVERLAY mobile */
         .overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:99;display:none;}
         .overlay.open{display:block;}
-
-        /* SIDEBAR */
-        .sb{
-          position:fixed;top:0;left:0;bottom:0;z-index:100;
-          width:220px;background:linear-gradient(180deg,${PD} 0%,#880e4f 100%);
-          display:flex;flex-direction:column;
-          transform:translateX(-100%);transition:transform .28s cubic-bezier(.4,0,.2,1);
-          box-shadow:4px 0 24px rgba(0,0,0,.15);
-        }
+        .sb{position:fixed;top:0;left:0;bottom:0;z-index:100;width:220px;background:linear-gradient(180deg,${PD},#880e4f);display:flex;flex-direction:column;transform:translateX(-100%);transition:transform .28s cubic-bezier(.4,0,.2,1);box-shadow:4px 0 24px rgba(0,0,0,.15);}
         .sb.open{transform:translateX(0);}
-        @media(min-width:900px){
-          .sb{transform:translateX(0);}
-          .overlay{display:none!important;}
-          .main{margin-left:220px;}
-        }
-
-        .main{margin-left:0;min-height:100vh;display:flex;flex-direction:column;transition:margin-left .28s;}
-
-        /* TOPBAR */
-        .topbar{
-          background:#fff;padding:13px 18px;
-          display:flex;align-items:center;justify-content:space-between;
-          border-bottom:1px solid ${PL};
-          position:sticky;top:0;z-index:50;
-          box-shadow:0 2px 12px rgba(233,30,99,.06);
-        }
-
-        /* CONTENT */
+        @media(min-width:900px){.sb{transform:translateX(0);}.overlay{display:none!important;}.main{margin-left:220px;}}
+        .main{margin-left:0;min-height:100vh;display:flex;flex-direction:column;}
+        .topbar{background:#fff;padding:13px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid ${PL};position:sticky;top:0;z-index:50;box-shadow:0 2px 12px rgba(233,30,99,.06);}
         .content{padding:18px;flex:1;animation:fadeUp .3s ease;}
-
-        /* KPIS */
         .kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:18px;}
         @media(min-width:700px){.kpis{grid-template-columns:repeat(4,1fr);}}
-        .kpi{background:#fff;border-radius:16px;padding:18px 16px;border:1px solid ${PL};box-shadow:0 2px 10px rgba(233,30,99,.05);transition:transform .2s,box-shadow .2s;}
-        .kpi:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(233,30,99,.1);}
-        .kpi-ic{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:12px;}
-        .kpi-val{font-family:'Playfair Display',serif;font-size:26px;font-weight:700;color:#1a1a1a;margin-bottom:2px;}
-        .kpi-lbl{font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:rgba(0,0,0,.35);}
-
-        /* CARDS */
+        .kpi{background:#fff;border-radius:16px;padding:18px 16px;border:1px solid ${PL};box-shadow:0 2px 10px rgba(233,30,99,.05);transition:transform .2s;}
+        .kpi:hover{transform:translateY(-2px);}
         .card{background:#fff;border-radius:16px;border:1px solid ${PL};box-shadow:0 2px 10px rgba(233,30,99,.05);overflow:hidden;margin-bottom:16px;}
         .card-hd{padding:14px 18px;border-bottom:1px solid ${PL};display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
-        .card-title{font-family:'Playfair Display',serif;font-size:15px;color:#1a1a1a;}
-
-        /* BOTÕES */
-        .btn-pk{padding:9px 16px;background:linear-gradient(135deg,${P},${PD});border:none;border-radius:10px;font-family:'Montserrat',sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#fff;cursor:pointer;white-space:nowrap;box-shadow:0 3px 10px rgba(233,30,99,.25);}
-        .btn-pk:hover{opacity:.9;transform:translateY(-1px);}
-        .btn-ot{padding:7px 12px;background:transparent;border:1.5px solid rgba(233,30,99,.3);border-radius:9px;font-family:'Montserrat',sans-serif;font-size:10px;font-weight:600;color:${P};cursor:pointer;white-space:nowrap;}
+        .card-title{font-family:'Playfair Display',serif;font-size:15px;}
+        .btn-pk{padding:9px 16px;background:linear-gradient(135deg,${P},${PD});border:none;border-radius:10px;font-family:'Montserrat',sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#fff;cursor:pointer;white-space:nowrap;}
+        .btn-pk:hover{opacity:.9;}
+        .btn-ot{padding:7px 12px;background:transparent;border:1.5px solid rgba(233,30,99,.3);border-radius:9px;font-family:'Montserrat',sans-serif;font-size:10px;font-weight:600;color:${P};cursor:pointer;}
         .btn-ot:hover{background:${PL};}
         .btn-gr{padding:7px 12px;background:transparent;border:1.5px solid rgba(27,94,32,.3);border-radius:9px;font-family:'Montserrat',sans-serif;font-size:10px;font-weight:600;color:#1b5e20;cursor:pointer;}
         .btn-gr:hover{background:#e8f5e9;}
@@ -318,23 +403,15 @@ export default function Admin() {
         .btn-rd:hover{background:#ffebee;}
         .btn-bl{padding:7px 12px;background:transparent;border:1.5px solid rgba(13,71,161,.25);border-radius:9px;font-family:'Montserrat',sans-serif;font-size:10px;font-weight:600;color:#0d47a1;cursor:pointer;}
         .btn-bl:hover{background:#e3f2fd;}
-
-        /* TABELA */
         .tbl{width:100%;border-collapse:collapse;}
         .tbl th{padding:9px 14px;text-align:left;font-size:9px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:rgba(0,0,0,.3);border-bottom:1px solid ${PL};}
         .tbl td{padding:11px 14px;font-size:13px;border-bottom:1px solid rgba(233,30,99,.04);}
         .tbl tr:last-child td{border-bottom:none;}
         .tbl tr:hover td{background:#fdf6f9;}
-        .tbl-wrap{overflow-x:auto;}
         .bdg{padding:3px 9px;border-radius:20px;font-size:10px;font-weight:600;white-space:nowrap;}
-
-        /* CARDS LISTA MOBILE */
         .ag-cards{display:flex;flex-direction:column;gap:10px;padding:14px;}
-        .ag-card{background:#fdf6f9;border-radius:12px;padding:14px;border:1px solid ${PL};display:flex;align-items:center;gap:12px;transition:box-shadow .2s;}
-        .ag-card:hover{box-shadow:0 4px 16px rgba(233,30,99,.1);}
+        .ag-card{background:#fdf6f9;border-radius:12px;padding:14px;border:1px solid ${PL};display:flex;align-items:center;gap:12px;}
         .ag-card.fin{background:#f1f8e9;border-color:#c8e6c9;}
-
-        /* AGENDA GRADE */
         .ag-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
         .ag-tbl{border-collapse:collapse;min-width:500px;}
         .ag-tbl th{padding:8px 10px;background:${PL};font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:${PD};border:1px solid rgba(233,30,99,.12);text-align:center;white-space:nowrap;}
@@ -345,63 +422,37 @@ export default function Admin() {
         .ag-tbl td.livre{cursor:pointer;}
         .ag-tbl td.livre:hover{background:#fdf0f5;}
         .cell-card{border-radius:6px;padding:4px 22px 4px 6px;height:100%;min-height:30px;position:relative;cursor:pointer;}
-        .cell-card:hover{filter:brightness(.97);}
-        .cell-card .del{position:absolute;top:3px;right:3px;background:rgba(0,0,0,.12);border:none;border-radius:4px;width:18px;height:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:10px;color:#c62828;}
-        .cell-card .del:hover{background:rgba(198,40,40,.25);}
-
-        /* PROFISSIONAL CARDS */
+        .cell-card .del{position:absolute;top:3px;right:3px;background:rgba(0,0,0,.12);border:none;border-radius:4px;width:18px;height:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:10px;}
         .prof-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;padding:16px;}
         .prof-card{border:1px solid ${PL};border-radius:14px;padding:16px;text-align:center;transition:box-shadow .2s,transform .2s;}
         .prof-card:hover{box-shadow:0 6px 20px rgba(233,30,99,.12);transform:translateY(-2px);}
-        .prof-av{width:48px;height:48px;border-radius:'50%';background:linear-gradient(135deg,#f48fb1,${P});display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff;margin:0 auto 10px;border-radius:50%;}
-
-        /* SERVIÇOS GRID */
         .srv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;padding:16px;}
-        .srv-card{border:1px solid ${PL};border-radius:12px;padding:14px;transition:box-shadow .2s,transform .2s;}
-        .srv-card:hover{box-shadow:0 4px 16px rgba(233,30,99,.1);transform:translateY(-1px);}
-
-        /* FORMS */
-        .form-body{padding:0;}
-        .form-inp{width:100%;padding:'12px 14px';border:1.5px solid rgba(233,30,99,.25);border-radius:10px;font-family:'Montserrat',sans-serif;font-size:13px;outline:none;background:#fff;}
-
-        /* FINANCEIRO */
+        .srv-card{border:1px solid ${PL};border-radius:12px;padding:14px;transition:box-shadow .2s;}
+        .srv-card:hover{box-shadow:0 4px 16px rgba(233,30,99,.1);}
         .fin-grid{display:grid;grid-template-columns:1fr;gap:16px;}
         @media(min-width:700px){.fin-grid{grid-template-columns:1fr 1fr;}}
-
-        /* TAG */
-        .tag{padding:2px 7px;background:${PL};border-radius:8px;font-size:9px;font-weight:700;color:${PD};}
-
-        /* TOAST */
-        .toast{position:fixed;bottom:20px;right:20px;padding:12px 20px;border-radius:12px;font-size:12px;font-weight:700;letter-spacing:1px;z-index:9999;color:#fff;box-shadow:0 6px 20px rgba(0,0,0,.2);animation:fadeUp .3s ease;}
-
-        /* SEARCH */
         .sw{position:relative;margin-bottom:14px;}
         .si{position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:13px;color:rgba(233,30,99,.4);}
         .sinp{width:100%;padding:11px 11px 11px 34px;border:1.5px solid ${PL};border-radius:10px;font-family:'Montserrat',sans-serif;font-size:13px;outline:none;background:#fff;}
         .sinp:focus{border-color:${P};}
-
-        /* STAT ROW */
-        .sr{display:flex;align-items:center;justify-content:space-between;padding:11px 18px;border-bottom:1px solid rgba(233,30,99,.04);}
-        .sr:last-child{border-bottom:none;}
+        .toast{position:fixed;bottom:20px;right:20px;padding:12px 20px;border-radius:12px;font-size:12px;font-weight:700;z-index:9999;color:#fff;box-shadow:0 6px 20px rgba(0,0,0,.2);}
       `}</style>
 
-      {/* OVERLAY mobile */}
       <div className={`overlay${sbOpen?' open':''}`} onClick={()=>setSbOpen(false)}/>
 
       {/* SIDEBAR */}
       <aside className={`sb${sbOpen?' open':''}`}>
         <div style={{padding:'20px 14px 16px',borderBottom:'1px solid rgba(255,255,255,.12)',display:'flex',alignItems:'center',gap:10}}>
           <div style={{width:32,height:32,borderRadius:'50%',border:'1.5px solid rgba(255,255,255,.6)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Playfair Display,serif',fontSize:10,fontWeight:700,color:'#fff',flexShrink:0}}>JOU</div>
-          <div><div style={{fontFamily:'Playfair Display,serif',fontSize:13,fontWeight:700,color:'#fff',letterSpacing:2}}>JOUDAT</div><div style={{fontSize:8,letterSpacing:3,color:'rgba(255,255,255,.5)',textTransform:'uppercase'}}>Admin</div></div>
-          <button onClick={()=>setSbOpen(false)} style={{marginLeft:'auto',background:'none',border:'none',color:'rgba(255,255,255,.6)',fontSize:18,cursor:'pointer',display:'block'}}>×</button>
+          <div style={{flex:1}}><div style={{fontFamily:'Playfair Display,serif',fontSize:13,fontWeight:700,color:'#fff',letterSpacing:2}}>JOUDAT</div><div style={{fontSize:8,letterSpacing:3,color:'rgba(255,255,255,.5)',textTransform:'uppercase'}}>Admin</div></div>
+          <button onClick={()=>setSbOpen(false)} style={{background:'none',border:'none',color:'rgba(255,255,255,.6)',fontSize:18,cursor:'pointer'}}>×</button>
         </div>
         <nav style={{flex:1,padding:'8px 0',overflowY:'auto'}}>
           {menus.map(m=>(
-            <div key={m.id}
-              onClick={()=>{setTab(m.id);setBusca('');setSbOpen(false)}}
+            <div key={m.id} onClick={()=>{setTab(m.id);setBusca('');setSbOpen(false)}}
               style={{display:'flex',alignItems:'center',gap:11,padding:'12px 16px',cursor:'pointer',borderLeft:`3px solid ${tab===m.id?'#fff':'transparent'}`,background:tab===m.id?'rgba(255,255,255,.15)':'transparent',transition:'all .2s'}}>
               <span style={{fontSize:14,color:tab===m.id?'#fff':'rgba(255,255,255,.6)',width:18,textAlign:'center'}}>{m.icon}</span>
-              <span style={{fontSize:12,fontWeight:tab===m.id?700:500,color:tab===m.id?'#fff':'rgba(255,255,255,.65)',whiteSpace:'nowrap'}}>{m.label}</span>
+              <span style={{fontSize:12,fontWeight:tab===m.id?700:500,color:tab===m.id?'#fff':'rgba(255,255,255,.65)'}}>{m.label}</span>
             </div>
           ))}
         </nav>
@@ -413,75 +464,70 @@ export default function Admin() {
 
       {/* MAIN */}
       <div className="main">
-        {/* TOPBAR */}
         <div className="topbar">
           <div style={{display:'flex',alignItems:'center',gap:12}}>
             <button onClick={()=>setSbOpen(!sbOpen)} style={{width:36,height:36,borderRadius:10,border:`1px solid ${PL}`,background:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,color:PD}}>☰</button>
-            <div style={{fontFamily:'Playfair Display,serif',fontSize:17,color:'#1a1a1a'}}>{menus.find(m=>m.id===tab)?.label}</div>
+            <div style={{fontFamily:'Playfair Display,serif',fontSize:17}}>{menus.find(m=>m.id===tab)?.label}</div>
           </div>
           <div style={{display:'flex',alignItems:'center',gap:8}}>
             <div style={{padding:'5px 11px',background:PL,borderRadius:20,fontSize:11,fontWeight:600,color:PD,whiteSpace:'nowrap'}}>{new Date().toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short'})}</div>
+            <button onClick={()=>{ load(); shToast('Dados atualizados!') }} style={{padding:'5px 10px',background:'none',border:`1px solid ${PL}`,borderRadius:8,cursor:'pointer',fontSize:13,color:PD}} title="Atualizar">↻</button>
             <button onClick={()=>setOk(false)} style={{padding:'6px 12px',background:'none',border:`1.5px solid ${PL}`,borderRadius:8,fontFamily:'Montserrat,sans-serif',fontSize:10,fontWeight:600,color:PD,cursor:'pointer',textTransform:'uppercase',letterSpacing:1}}>Sair</button>
           </div>
         </div>
 
         <div className="content">
+          {loading&&<Spin/>}
+          {!loading&&(<>
 
           {/* ══ DASHBOARD ══ */}
           {tab==='dashboard'&&(<>
             <div className="kpis">
               {[
-                {l:'Fat. Hoje',v:`R$ ${fatHoje}`,ic:'💰',bg:'#fce4ec'},
-                {l:'Agendamentos',v:agHoje,ic:'📅',bg:'#e8f5e9'},
-                {l:'Em atendimento',v:emAtend,ic:'✂️',bg:'#fff3e0'},
-                {l:'Clientes',v:cls.length,ic:'👥',bg:'#f3e5f5'},
+                {l:'Fat. Hoje',     v:`R$ ${fatHoje}`,  ic:'💰',bg:PL},
+                {l:'Agendamentos',  v:agHoje.length,     ic:'📅',bg:'#e8f5e9'},
+                {l:'Em atendimento',v:emAtend,            ic:'✂️',bg:'#fff3e0'},
+                {l:'Clientes',      v:cls.length,         ic:'👥',bg:'#f3e5f5'},
               ].map(k=>(
                 <div key={k.l} className="kpi">
-                  <div className="kpi-ic" style={{background:k.bg}}>{k.ic}</div>
-                  <div className="kpi-val">{k.v}</div>
-                  <div className="kpi-lbl">{k.l}</div>
+                  <div style={{width:38,height:38,borderRadius:12,background:k.bg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,marginBottom:12}}>{k.ic}</div>
+                  <div style={{fontFamily:'Playfair Display,serif',fontSize:26,fontWeight:700,marginBottom:2}}>{k.v}</div>
+                  <div style={{fontSize:10,fontWeight:600,letterSpacing:2,textTransform:'uppercase',color:'rgba(0,0,0,.35)'}}>{k.l}</div>
                 </div>
               ))}
             </div>
-
-            {/* Agenda resumida como cards */}
             <div className="card">
-              <div className="card-hd">
-                <div className="card-title">Agenda de Hoje</div>
-                <button className="btn-ot" onClick={()=>setTab('agenda')}>Ver grade →</button>
-              </div>
+              <div className="card-hd"><div className="card-title">Agenda de Hoje</div><button className="btn-ot" onClick={()=>setTab('agenda')}>Ver grade →</button></div>
               <div className="ag-cards">
-                {ags.filter(a=>a.data===hoje&&a.status!=='cancelado').length===0
-                  ? <div style={{textAlign:'center',padding:'20px',color:'rgba(0,0,0,.3)',fontSize:13}}>Nenhum agendamento hoje</div>
-                  : ags.filter(a=>a.data===hoje&&a.status!=='cancelado').map(a=>(
-                    <div key={a.id} className={`ag-card${a.status==='finalizado'?' fin':''}`}>
-                      <div style={{width:44,height:44,borderRadius:12,background:a.status==='finalizado'?'#c8e6c9':PL,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                        <div style={{fontSize:13,fontWeight:700,color:a.status==='finalizado'?'#1b5e20':PD}}>{a.horario}</div>
+                {agHoje.length===0
+                  ? <div style={{textAlign:'center',padding:20,color:'rgba(0,0,0,.3)',fontSize:13}}>Nenhum agendamento hoje</div>
+                  : agHoje.map(a=>(
+                    <div key={a.id} className={`ag-card${a.status==='completed'?' fin':''}`}>
+                      <div style={{width:44,height:44,borderRadius:12,background:a.status==='completed'?'#c8e6c9':PL,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                        <div style={{fontSize:12,fontWeight:700,color:a.status==='completed'?'#1b5e20':PD}}>{a.horario}</div>
                       </div>
                       <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:13,fontWeight:700,color:'#1a1a1a',marginBottom:2}}>{a.cliente}</div>
+                        <div style={{fontSize:13,fontWeight:700}}>{a.cliente}</div>
                         <div style={{fontSize:11,color:'rgba(0,0,0,.5)'}}>{a.servico} · {a.profissional}</div>
                       </div>
-                      <div style={{textAlign:'right',flexShrink:0}}>
-                        {a.status==='finalizado'
-                          ? <span style={{fontSize:11,fontWeight:700,color:'#2e7d32'}}>✓ R$ {a.valorCobrado}</span>
-                          : <button className="btn-gr" style={{fontSize:10,padding:'5px 10px'}} onClick={()=>openModal('fechamento',a)}>✓ Fechar</button>
-                        }
-                      </div>
+                      {a.status==='completed'
+                        ? <span style={{fontSize:11,fontWeight:700,color:'#2e7d32'}}>✓ R$ {a.valorCobrado}</span>
+                        : <button className="btn-gr" style={{fontSize:10,padding:'5px 10px'}} onClick={()=>openModal('fechamento',{...a,valorCobrado:a.valorOriginal})}>✓ Fechar</button>
+                      }
                     </div>
                   ))
                 }
               </div>
             </div>
-
-            {/* Equipe */}
             <div className="card">
               <div className="card-hd"><div className="card-title">Equipe</div></div>
               {profs.map(p=>(
                 <div key={p.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 18px',borderBottom:`1px solid rgba(233,30,99,.04)`}}>
-                  <div style={{width:36,height:36,borderRadius:'50%',background:`linear-gradient(135deg,#f48fb1,${P})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,fontWeight:700,color:'#fff',flexShrink:0}}>{p.nome[0]}</div>
-                  <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{p.nome}</div><div style={{fontSize:11,color:'rgba(0,0,0,.4)'}}>{p.hi}–{p.hf}</div></div>
-                  <span className="bdg" style={{background:p.status==='disponivel'?'#e8f5e9':p.status==='ocupado'?PL:'#fff3e0',color:p.status==='disponivel'?'#2e7d32':p.status==='ocupado'?PD:'#f57c00'}}>{p.status==='disponivel'?'Disponível':p.status==='ocupado'?'Ocupado':'Ausente'}</span>
+                  <div style={{width:36,height:36,borderRadius:'50%',background:`linear-gradient(135deg,#f48fb1,${P})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,fontWeight:700,color:'#fff',flexShrink:0}}>{(p.profiles?.full_name||p.specialty||'?')[0]}</div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:13,fontWeight:600}}>{p.profiles?.full_name||'—'}</div>
+                    <div style={{fontSize:11,color:'rgba(0,0,0,.4)'}}>{p.specialty} · {p.commission_pct}%</div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -494,9 +540,9 @@ export default function Admin() {
                 <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
                   <div className="card-title">Grade</div>
                   <input type="date" value={dmyToISO(agData)} onChange={e=>setAgData(isoToDmy(e.target.value))}
-                    style={{padding:'7px 10px',border:`1.5px solid ${PL}`,borderRadius:9,fontFamily:'Montserrat,sans-serif',fontSize:12,outline:'none',background:'#fff'}}/>
+                    style={{padding:'7px 10px',border:`1.5px solid ${PL}`,borderRadius:9,fontFamily:'Montserrat,sans-serif',fontSize:12,outline:'none'}}/>
                 </div>
-                <button className="btn-pk" onClick={()=>openModal('agendamento',{cliente:'',servico:'',profissional:'',data:agData,horario:'',valorOriginal:'',valorCobrado:'',pago:false,profissionalFixo:false})}>+ Agendar</button>
+                <button className="btn-pk" onClick={()=>openModal('agendamento',{cliente:'',servico:'',profissional:'',data:agData,horario:'',profissionalFixo:false})}>+ Agendar</button>
               </div>
               <div className="ag-wrap">
                 <table className="ag-tbl">
@@ -505,9 +551,8 @@ export default function Admin() {
                       <th className="hcol">Hora</th>
                       {profs.map(p=>(
                         <th key={p.id}>
-                          <div style={{fontSize:11}}>{p.nome}</div>
-                          <div style={{fontSize:9,opacity:.7,fontWeight:400}}>{p.especialidade}</div>
-                          <div style={{fontSize:9,opacity:.6,fontWeight:400}}>{p.hi}–{p.hf}</div>
+                          <div>{p.profiles?.full_name||p.specialty}</div>
+                          <div style={{fontSize:9,opacity:.7,fontWeight:400}}>{p.specialty}</div>
                         </th>
                       ))}
                     </tr>
@@ -517,25 +562,20 @@ export default function Admin() {
                       <tr key={h}>
                         <td className="hcell">{h}</td>
                         {profs.map(p=>{
-                          const cel=getCel(h,p.nome)
-                          const dentroExp=h>=p.hi&&h<=p.hf
+                          const nomP=p.profiles?.full_name||p.specialty||''
+                          const cel=getCel(h,nomP)
                           const passado=!isFuturo(agData,h)
-                          const cinza=!dentroExp||(passado&&!cel)
-                          const livre=dentroExp&&!passado&&!cel
-
-                          const bg=cel?.status==='finalizado'
-                            ?'linear-gradient(135deg,#c8e6c9,#a5d6a7)'
-                            :'linear-gradient(135deg,#fce4ec,#f8bbd0)'
-                          const cc=cel?.status==='finalizado'?'#1b5e20':PD
-
+                          const cinza=passado&&!cel
+                          const livre=!passado&&!cel
+                          const bg=cel?.status==='completed'?'linear-gradient(135deg,#c8e6c9,#a5d6a7)':'linear-gradient(135deg,#fce4ec,#f8bbd0)'
+                          const cc=cel?.status==='completed'?'#1b5e20':PD
                           return(
-                            <td key={p.id}
-                              className={cinza?'cinza':livre?'livre':''}
+                            <td key={p.id} className={cinza?'cinza':livre?'livre':''}
                               onClick={()=>{
                                 if(!livre) return
-                                openModal('agendamento',{cliente:'',servico:'',profissional:p.nome,data:agData,horario:h,valorOriginal:'',valorCobrado:'',pago:false,profissionalFixo:true})
+                                openModal('agendamento',{cliente:'',servico:'',profissional:nomP,data:agData,horario:h,profissionalFixo:true})
                               }}>
-                              {livre&&<div style={{width:'100%',height:'100%',minHeight:30,display:'flex',alignItems:'center',justifyContent:'center',color:'rgba(233,30,99,.2)',fontSize:18,fontWeight:300}}>+</div>}
+                              {livre&&<div style={{width:'100%',height:'100%',minHeight:30,display:'flex',alignItems:'center',justifyContent:'center',color:'rgba(233,30,99,.2)',fontSize:18}}>+</div>}
                               {cel&&(
                                 <div className="cell-card" style={{background:bg}}>
                                   <div style={{fontSize:11,fontWeight:700,color:cc,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{cel.cliente}</div>
@@ -553,25 +593,23 @@ export default function Admin() {
                 </table>
               </div>
             </div>
-
-            {/* Lista do dia como cards — melhor para mobile */}
             <div className="card">
               <div className="card-hd"><div className="card-title">Lista — {agData}</div></div>
-              {ags.filter(a=>a.data===agData).length===0
+              {agRows.filter(a=>a.data===agData).length===0
                 ? <div style={{padding:20,textAlign:'center',color:'rgba(0,0,0,.3)',fontSize:13}}>Nenhum agendamento</div>
                 : <div className="ag-cards">
-                    {ags.filter(a=>a.data===agData).map(a=>(
-                      <div key={a.id} className={`ag-card${a.status==='finalizado'?' fin':''}`}>
-                        <div style={{width:44,height:44,borderRadius:12,background:a.status==='finalizado'?'#c8e6c9':PL,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                          <div style={{fontSize:12,fontWeight:700,color:a.status==='finalizado'?'#1b5e20':PD}}>{a.horario}</div>
+                    {agRows.filter(a=>a.data===agData).map(a=>(
+                      <div key={a.id} className={`ag-card${a.status==='completed'?' fin':''}`}>
+                        <div style={{width:44,height:44,borderRadius:12,background:a.status==='completed'?'#c8e6c9':PL,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                          <div style={{fontSize:12,fontWeight:700,color:a.status==='completed'?'#1b5e20':PD}}>{a.horario}</div>
                         </div>
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{fontSize:13,fontWeight:700}}>{a.cliente}</div>
                           <div style={{fontSize:11,color:'rgba(0,0,0,.5)'}}>{a.servico} · {a.profissional}</div>
-                          {a.valorCobrado>0&&<div style={{fontSize:11,fontWeight:600,color:a.status==='finalizado'?'#2e7d32':PD}}>R$ {a.valorCobrado}{a.desconto>0&&<span style={{color:'#c62828',marginLeft:4}}>(-R${a.desconto})</span>}</div>}
+                          {a.valorCobrado>0&&<div style={{fontSize:11,fontWeight:600,color:a.status==='completed'?'#2e7d32':PD}}>R$ {a.valorCobrado}</div>}
                         </div>
                         <div style={{display:'flex',gap:6,flexShrink:0,flexWrap:'wrap',justifyContent:'flex-end'}}>
-                          {a.status!=='finalizado'&&a.status!=='cancelado'&&(
+                          {a.status!=='completed'&&a.status!=='cancelled'&&(
                             <button className="btn-gr" style={{fontSize:10,padding:'5px 9px'}} onClick={()=>openModal('fechamento',{...a,valorCobrado:a.valorOriginal})}>✓ Fechar</button>
                           )}
                           <button className="btn-rd" style={{fontSize:12,padding:'5px 9px'}} onClick={()=>delAg(a.id)}>🗑</button>
@@ -587,25 +625,23 @@ export default function Admin() {
           {tab==='clientes'&&(
             <div className="card">
               <div className="card-hd">
-                <div className="card-title">Clientes</div>
-                <button className="btn-pk" onClick={()=>openModal('cliente',{nome:'',telefone:'',email:''})}>+ Novo</button>
+                <div className="card-title">Clientes ({cls.length})</div>
+                <button className="btn-pk" onClick={()=>openModal('cliente',{full_name:'',phone:''})}>+ Novo</button>
               </div>
               <div style={{padding:'12px 16px 0'}}>
-                <div className="sw"><span className="si">🔍</span><input className="sinp" placeholder="Buscar por nome ou telefone..." value={busca} onChange={e=>setBusca(e.target.value)}/></div>
+                <div className="sw"><span className="si">🔍</span><input className="sinp" placeholder="Buscar..." value={busca} onChange={e=>setBusca(e.target.value)}/></div>
               </div>
-              {/* Cards de cliente para mobile */}
               <div style={{padding:'0 16px 16px'}}>
                 {clsFilt.map(c=>(
                   <div key={c.id} style={{border:`1px solid ${PL}`,borderRadius:12,padding:'12px 14px',marginBottom:10,display:'flex',alignItems:'center',gap:12}}>
-                    <div style={{width:38,height:38,borderRadius:'50%',background:`linear-gradient(135deg,#f48fb1,${P})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,fontWeight:700,color:'#fff',flexShrink:0}}>{c.nome[0]}</div>
+                    <div style={{width:38,height:38,borderRadius:'50%',background:`linear-gradient(135deg,#f48fb1,${P})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,fontWeight:700,color:'#fff',flexShrink:0}}>{(c.full_name||'?')[0]}</div>
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:13,fontWeight:700}}>{c.nome}</div>
-                      <div style={{fontSize:11,color:'rgba(0,0,0,.5)'}}>{c.telefone}</div>
-                      <div style={{fontSize:11,color:PD,fontWeight:600}}>{c.visitas}x · R$ {c.gasto}</div>
+                      <div style={{fontSize:13,fontWeight:700}}>{c.full_name}</div>
+                      <div style={{fontSize:11,color:'rgba(0,0,0,.5)'}}>{c.phone||'Sem telefone'}</div>
                     </div>
                     <div style={{display:'flex',gap:6}}>
                       <button className="btn-ot" style={{fontSize:10,padding:'6px 10px'}} onClick={()=>openModal('cliente',c)}>✏️</button>
-                      <button className="btn-rd" style={{fontSize:10,padding:'6px 10px'}} onClick={()=>{if(window.confirm('Excluir?'))setCls(x=>x.filter(y=>y.id!==c.id))}}>🗑</button>
+                      <button className="btn-rd" style={{fontSize:10,padding:'6px 10px'}} onClick={()=>delCl(c.id)}>🗑</button>
                     </div>
                   </div>
                 ))}
@@ -617,23 +653,21 @@ export default function Admin() {
           {tab==='profissionais'&&(
             <div className="card">
               <div className="card-hd">
-                <div className="card-title">Equipe</div>
-                <button className="btn-pk" onClick={()=>openModal('profissional',{nome:'',especialidade:'',tipo:'cabelereiro',comissao:'',status:'disponivel',hi:'08:00',hf:'18:00'})}>+ Novo</button>
+                <div className="card-title">Equipe ({profs.length})</div>
+                <button className="btn-pk" onClick={()=>openModal('profissional',{full_name:'',specialty:'',commission_pct:40})}>+ Novo</button>
               </div>
               <div className="prof-grid">
                 {profs.map(p=>(
                   <div key={p.id} className="prof-card">
-                    <div className="prof-av">{p.nome[0]}</div>
-                    <div style={{fontSize:14,fontWeight:700,marginBottom:2}}>{p.nome}</div>
-                    <div style={{fontSize:11,color:'rgba(0,0,0,.4)',marginBottom:8,letterSpacing:1}}>{p.especialidade}</div>
-                    <div style={{display:'flex',justifyContent:'center',gap:12,marginBottom:12}}>
-                      <div style={{textAlign:'center'}}><div style={{fontSize:15,fontWeight:700,color:PD}}>{p.comissao}%</div><div style={{fontSize:9,color:'rgba(0,0,0,.35)',letterSpacing:2,textTransform:'uppercase'}}>Comissão</div></div>
-                      <div style={{textAlign:'center'}}><div style={{fontSize:12,fontWeight:700,color:PD}}>{p.hi}–{p.hf}</div><div style={{fontSize:9,color:'rgba(0,0,0,.35)',letterSpacing:2,textTransform:'uppercase'}}>Horário</div></div>
+                    <div style={{width:48,height:48,borderRadius:'50%',background:`linear-gradient(135deg,#f48fb1,${P})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,fontWeight:700,color:'#fff',margin:'0 auto 10px'}}>{(p.profiles?.full_name||p.specialty||'?')[0]}</div>
+                    <div style={{fontSize:14,fontWeight:700,marginBottom:2}}>{p.profiles?.full_name||'—'}</div>
+                    <div style={{fontSize:11,color:'rgba(0,0,0,.4)',marginBottom:10,letterSpacing:1}}>{p.specialty}</div>
+                    <div style={{display:'flex',justifyContent:'center',gap:16,marginBottom:12}}>
+                      <div style={{textAlign:'center'}}><div style={{fontSize:15,fontWeight:700,color:PD}}>{p.commission_pct}%</div><div style={{fontSize:9,color:'rgba(0,0,0,.35)',letterSpacing:2,textTransform:'uppercase'}}>Comissão</div></div>
                     </div>
                     <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                      <button className="btn-ot" onClick={()=>openModal('profissional',p)}>✏️ Editar</button>
-                      <button className="btn-bl" onClick={()=>{setProfs(x=>x.map(y=>y.id===p.id?{...y,senha:'123456'}:y));shToast('Senha resetada!')}}>🔑 Resetar Senha</button>
-                      <button className="btn-rd" onClick={()=>{if(window.confirm('Remover?'))setProfs(x=>x.filter(y=>y.id!==p.id))}}>✕ Remover</button>
+                      <button className="btn-ot" onClick={()=>openModal('profissional',{...p,full_name:p.profiles?.full_name||''})}>✏️ Editar</button>
+                      <button className="btn-rd" onClick={()=>delProf(p.id)}>✕ Remover</button>
                     </div>
                   </div>
                 ))}
@@ -645,20 +679,19 @@ export default function Admin() {
           {tab==='servicos'&&(
             <div className="card">
               <div className="card-hd">
-                <div className="card-title">Serviços</div>
-                <button className="btn-pk" onClick={()=>openModal('servico',{nome:'',categoria:'Corte',preco:'',duracao:''})}>+ Novo</button>
+                <div className="card-title">Serviços ({srvs.length})</div>
+                <button className="btn-pk" onClick={()=>openModal('servico',{name:'',categoria:'Corte',price:'',duration_min:30})}>+ Novo</button>
               </div>
               <div className="srv-grid">
                 {srvs.map(s=>(
                   <div key={s.id} className="srv-card">
-                    <div style={{fontSize:9,fontWeight:700,letterSpacing:3,textTransform:'uppercase',color:P,marginBottom:4}}>{s.categoria}</div>
-                    <div style={{fontSize:13,fontWeight:700,marginBottom:2}}>{s.nome}</div>
-                    <div style={{fontFamily:'Playfair Display,serif',fontSize:20,fontWeight:700,color:PD,marginBottom:2}}>R$ {s.preco}</div>
-                    <div style={{fontSize:11,color:'rgba(0,0,0,.4)',marginBottom:8}}>⏱ {s.duracao} min</div>
-                    <span className="tag" style={{background:s.tipo==='manicure'?'#f3e5f5':PL,color:s.tipo==='manicure'?'#7b1fa2':PD}}>{s.tipo==='manicure'?'💅 Unhas':'✂️ Cabelereiro'}</span>
-                    <div style={{display:'flex',gap:6,marginTop:10}}>
-                      <button className="btn-ot" style={{flex:1,fontSize:10}} onClick={()=>openModal('servico',s)}>Editar</button>
-                      <button className="btn-rd" style={{fontSize:10}} onClick={()=>{if(window.confirm('Excluir?'))setSrvs(x=>x.filter(y=>y.id!==s.id))}}>🗑</button>
+                    <div style={{fontSize:9,fontWeight:700,letterSpacing:3,textTransform:'uppercase',color:P,marginBottom:4}}>{s.service_categories?.name||'—'}</div>
+                    <div style={{fontSize:13,fontWeight:700,marginBottom:2}}>{s.name}</div>
+                    <div style={{fontFamily:'Playfair Display,serif',fontSize:20,fontWeight:700,color:PD,marginBottom:2}}>R$ {s.price}</div>
+                    <div style={{fontSize:11,color:'rgba(0,0,0,.4)',marginBottom:10}}>⏱ {s.duration_min} min</div>
+                    <div style={{display:'flex',gap:6}}>
+                      <button className="btn-ot" style={{flex:1,fontSize:10}} onClick={()=>openModal('servico',{...s,categoria:s.service_categories?.name||''})}>Editar</button>
+                      <button className="btn-rd" style={{fontSize:10}} onClick={()=>delSrv(s.id)}>🗑</button>
                     </div>
                   </div>
                 ))}
@@ -672,13 +705,13 @@ export default function Admin() {
               {[
                 {l:'Fat. Hoje',v:`R$ ${fatHoje}`,ic:'💰',bg:PL},
                 {l:'Fat. Mês', v:`R$ ${fatMes}`, ic:'📈',bg:'#e8f5e9'},
-                {l:'Descontos',v:`R$ ${ags.filter(a=>a.status==='finalizado').reduce((s,a)=>s+(a.desconto||0),0)}`,ic:'🏷️',bg:'#fff3e0'},
-                {l:'Comissões',v:`R$ ${profs.reduce((s,p)=>{const t=ags.filter(a=>a.profissional===p.nome&&a.status==='finalizado').reduce((ss,a)=>ss+(Number(a.valorCobrado)||0),0);return s+Math.round(t*(p.comissao/100))},0)}`,ic:'🤝',bg:'#f3e5f5'},
+                {l:'Finalizados',v:agRows.filter(a=>a.status==='completed').length,ic:'✅',bg:'#fff3e0'},
+                {l:'Profissionais',v:profs.length,ic:'👥',bg:'#f3e5f5'},
               ].map(k=>(
                 <div key={k.l} className="kpi">
-                  <div className="kpi-ic" style={{background:k.bg}}>{k.ic}</div>
-                  <div className="kpi-val">{k.v}</div>
-                  <div className="kpi-lbl">{k.l}</div>
+                  <div style={{width:38,height:38,borderRadius:12,background:k.bg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,marginBottom:12}}>{k.ic}</div>
+                  <div style={{fontFamily:'Playfair Display,serif',fontSize:26,fontWeight:700,marginBottom:2}}>{k.v}</div>
+                  <div style={{fontSize:10,fontWeight:600,letterSpacing:2,textTransform:'uppercase',color:'rgba(0,0,0,.35)'}}>{k.l}</div>
                 </div>
               ))}
             </div>
@@ -687,13 +720,13 @@ export default function Admin() {
                 <div className="card-hd"><div className="card-title">Atendimentos Finalizados</div></div>
                 <div style={{overflowX:'auto'}}>
                   <table className="tbl">
-                    <thead><tr><th>Cliente</th><th>Serviço</th><th>Prof.</th><th>Cobrado</th></tr></thead>
-                    <tbody>{ags.filter(a=>a.status==='finalizado').map(a=>(
+                    <thead><tr><th>Cliente</th><th>Serviço</th><th>Prof.</th><th>Valor</th></tr></thead>
+                    <tbody>{agRows.filter(a=>a.status==='completed').map(a=>(
                       <tr key={a.id}>
                         <td style={{fontWeight:600}}>{a.cliente}</td>
                         <td style={{fontSize:12,color:'rgba(0,0,0,.5)'}}>{a.servico}</td>
                         <td>{a.profissional}</td>
-                        <td style={{fontWeight:700,color:'#2e7d32'}}>R$ {a.valorCobrado}{a.desconto>0&&<span style={{fontSize:10,color:'#c62828',marginLeft:4}}>(-{a.desconto})</span>}</td>
+                        <td style={{fontWeight:700,color:'#2e7d32'}}>R$ {a.valorCobrado}</td>
                       </tr>
                     ))}</tbody>
                   </table>
@@ -703,10 +736,16 @@ export default function Admin() {
                 <div className="card-hd"><div className="card-title">Comissões</div></div>
                 <div style={{overflowX:'auto'}}>
                   <table className="tbl">
-                    <thead><tr><th>Prof.</th><th>%</th><th>Base</th><th>Comissão</th></tr></thead>
+                    <thead><tr><th>Profissional</th><th>%</th><th>Comissão</th></tr></thead>
                     <tbody>{profs.map(p=>{
-                      const base=ags.filter(a=>a.profissional===p.nome&&a.status==='finalizado').reduce((s,a)=>s+(Number(a.valorCobrado)||0),0)
-                      return(<tr key={p.id}><td style={{fontWeight:600}}>{p.nome}</td><td><span className="bdg" style={{background:'#f3e5f5',color:'#7b1fa2'}}>{p.comissao}%</span></td><td>R$ {base}</td><td style={{fontWeight:700,color:PD}}>R$ {Math.round(base*(p.comissao/100))}</td></tr>)
+                      const base=agRows.filter(a=>a.profissional===(p.profiles?.full_name||'')&&a.status==='completed').reduce((s,a)=>s+a.valorCobrado,0)
+                      return(
+                        <tr key={p.id}>
+                          <td style={{fontWeight:600}}>{p.profiles?.full_name||'—'}</td>
+                          <td><span className="bdg" style={{background:'#f3e5f5',color:'#7b1fa2'}}>{p.commission_pct}%</span></td>
+                          <td style={{fontWeight:700,color:PD}}>R$ {Math.round(base*(p.commission_pct/100))}</td>
+                        </tr>
+                      )
                     })}</tbody>
                   </table>
                 </div>
@@ -717,14 +756,17 @@ export default function Admin() {
           {/* ══ CONFIGURAÇÕES ══ */}
           {tab==='configuracoes'&&(
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:16}}>
-              {[{title:'Dados do Salão',fields:[{l:'Nome do Salão',ph:'Joudat Salon'},{l:'Telefone/WhatsApp',ph:'(11) 99999-0000'},{l:'Endereço',ph:'Rua, número, bairro'},{l:'E-mail',ph:'contato@salao.com'}]},{title:'Funcionamento',fields:[{l:'Horário padrão',ph:'09:00 – 19:00'},{l:'Dias',ph:'Segunda a Sábado'},{l:'Intervalo',ph:'10 minutos'},{l:'Notificações',ph:'E-mail + WhatsApp'}]}].map(sec=>(
+              {[
+                {title:'Dados do Salão',fields:['Nome do Salão','Telefone/WhatsApp','Endereço','E-mail']},
+                {title:'Funcionamento',fields:['Horário padrão','Dias','Intervalo','Notificações']},
+              ].map(sec=>(
                 <div key={sec.title} className="card">
                   <div className="card-hd"><div className="card-title">{sec.title}</div></div>
                   <div style={{padding:16}}>
                     {sec.fields.map(f=>(
-                      <div key={f.l} style={{marginBottom:12}}>
-                        <label style={{display:'block',fontSize:10,fontWeight:700,letterSpacing:2,textTransform:'uppercase',color:'rgba(194,24,91,.7)',marginBottom:6}}>{f.l}</label>
-                        <input placeholder={f.ph} style={{width:'100%',padding:'11px 13px',border:`1.5px solid rgba(233,30,99,.2)`,borderRadius:10,fontFamily:'Montserrat,sans-serif',fontSize:13,outline:'none'}}/>
+                      <div key={f} style={{marginBottom:12}}>
+                        <Lbl>{f}</Lbl>
+                        <input placeholder={f} style={{width:'100%',padding:'11px 13px',border:`1.5px solid rgba(233,30,99,.2)`,borderRadius:10,fontFamily:'Montserrat,sans-serif',fontSize:13,outline:'none'}}/>
                       </div>
                     ))}
                     <button className="btn-pk" onClick={()=>shToast('Salvo!')}>Salvar</button>
@@ -734,24 +776,23 @@ export default function Admin() {
             </div>
           )}
 
+          </>)}
         </div>
       </div>
 
-      {/* ══ MODAL AGENDAR (célula) — ultra simples ══ */}
+      {/* ══ MODAL AGENDAR (célula) ══ */}
       {modal==='agendamento'&&form.profissionalFixo&&(
-        <Modal title={`Agendar · ${form.profissional} · ${form.data} · ${form.horario}`} onClose={closeModal}>
-          <Box cor="rosa">
-            👤 <strong>{form.profissional}</strong> &nbsp;·&nbsp; 📅 {form.data} &nbsp;·&nbsp; 🕐 {form.horario}
-          </Box>
+        <Modal title={`Agendar · ${form.profissional} · ${form.horario}`} onClose={closeModal}>
+          <Box cor="rosa">👤 <strong>{form.profissional}</strong> &nbsp;·&nbsp; 📅 {form.data} &nbsp;·&nbsp; 🕐 {form.horario}</Box>
           <Lbl>Cliente *</Lbl>
           <Sel value={form.cliente||''} onChange={F('cliente')}>
             <option value="">Selecionar cliente...</option>
-            {cls.map(c=><option key={c.id}>{c.nome}</option>)}
+            {cls.map(c=><option key={c.id}>{c.full_name}</option>)}
           </Sel>
           <Lbl>Serviço *</Lbl>
-          <Sel value={form.servico||''} onChange={onSrvChange}>
+          <Sel value={form.servico||''} onChange={F('servico')}>
             <option value="">Selecionar serviço...</option>
-            {compats(form.profissional).map(s=><option key={s.id}>{s.nome}</option>)}
+            {srvs.map(s=><option key={s.id}>{s.name}</option>)}
           </Sel>
           {ferr&&<Box cor="vermelho">{ferr}</Box>}
           <div style={{display:'flex',gap:10,marginTop:18}}>
@@ -761,21 +802,23 @@ export default function Admin() {
         </Modal>
       )}
 
-      {/* ══ MODAL AGENDAR (botão) — todos os campos ══ */}
+      {/* ══ MODAL AGENDAR (botão) ══ */}
       {modal==='agendamento'&&!form.profissionalFixo&&(
         <Modal title={form.id?'Editar Agendamento':'Novo Agendamento'} onClose={closeModal}>
-          {form.id&&<Box cor="amarelo">✏️ Só é possível ajustar profissional e horário. Para mudar serviço/cliente, exclua e crie um novo.</Box>}
           <Lbl>Cliente *</Lbl>
-          <Sel value={form.cliente||''} onChange={F('cliente')} disabled={!!form.id}>{cls.map(c=><option key={c.id}>{c.nome}</option>)}</Sel>
-          <Lbl>Serviço *</Lbl>
-          <Sel value={form.servico||''} onChange={onSrvChange} disabled={!!form.id}>
+          <Sel value={form.cliente||''} onChange={F('cliente')}>
             <option value="">Selecionar...</option>
-            {srvs.map(s=><option key={s.id}>{s.nome}</option>)}
+            {cls.map(c=><option key={c.id}>{c.full_name}</option>)}
           </Sel>
           <Lbl>Profissional *</Lbl>
-          <Sel value={form.profissional||''} onChange={v=>{setForm(f=>({...f,profissional:v,servico:form.id?f.servico:'',valorOriginal:'',valorCobrado:''}));setFerr('')}}>
+          <Sel value={form.profissional||''} onChange={v=>{setForm(f=>({...f,profissional:v,servico:''}));setFerr('')}}>
             <option value="">Selecionar...</option>
-            {profs.map(p=><option key={p.id}>{p.nome} ({p.especialidade})</option>)}
+            {profs.map(p=><option key={p.id}>{p.profiles?.full_name||p.specialty}</option>)}
+          </Sel>
+          <Lbl>Serviço *</Lbl>
+          <Sel value={form.servico||''} onChange={F('servico')}>
+            <option value="">Selecionar...</option>
+            {srvs.map(s=><option key={s.id}>{s.name}</option>)}
           </Sel>
           <Lbl>Data *</Lbl>
           <input type="date" value={dmyToISO(form.data)||''} onChange={e=>setForm(f=>({...f,data:isoToDmy(e.target.value)}))}
@@ -796,26 +839,18 @@ export default function Admin() {
       {/* ══ MODAL FECHAMENTO ══ */}
       {modal==='fechamento'&&(
         <Modal title="✓ Fechar Atendimento" onClose={closeModal}>
-          <Box cor="verde">
-            <strong>{form.cliente}</strong> — {form.servico}<br/>
-            <span style={{fontSize:11,opacity:.8}}>{form.profissional} · {form.data} às {form.horario}</span>
-          </Box>
+          <Box cor="verde"><strong>{form.cliente}</strong> — {form.servico}<br/><span style={{fontSize:11,opacity:.8}}>{form.profissional} · {form.data} às {form.horario}</span></Box>
           <Lbl>Valor do serviço</Lbl>
           <Inp value={`R$ ${form.valorOriginal||'—'}`} disabled/>
           <Lbl>Valor cobrado * (ajuste se houver desconto)</Lbl>
           <Inp type="number" value={form.valorCobrado||''} onChange={F('valorCobrado')} placeholder="Valor recebido"/>
-          {form.valorCobrado&&Number(form.valorCobrado)<Number(form.valorOriginal)&&(
-            <Box cor="amarelo">⚠️ Desconto de R$ {Number(form.valorOriginal)-Number(form.valorCobrado)} será registrado.</Box>
-          )}
-          {form.valorCobrado&&Number(form.valorCobrado)>Number(form.valorOriginal)&&(
-            <Box cor="azul">ℹ️ Valor acima do preço padrão.</Box>
-          )}
+          {form.valorCobrado&&Number(form.valorCobrado)<Number(form.valorOriginal)&&<Box cor="amarelo">⚠️ Desconto de R$ {Number(form.valorOriginal)-Number(form.valorCobrado)}</Box>}
           <Lbl>Forma de pagamento</Lbl>
           <Sel value={form.formaPgto||'dinheiro'} onChange={F('formaPgto')}>
             <option value="dinheiro">💵 Dinheiro</option>
             <option value="pix">📱 PIX</option>
-            <option value="credito">💳 Cartão de Crédito</option>
-            <option value="debito">💳 Cartão de Débito</option>
+            <option value="credito">💳 Crédito</option>
+            <option value="debito">💳 Débito</option>
           </Sel>
           {ferr&&<Box cor="vermelho">{ferr}</Box>}
           <div style={{display:'flex',gap:10,marginTop:18}}>
@@ -828,9 +863,8 @@ export default function Admin() {
       {/* ══ MODAL CLIENTE ══ */}
       {modal==='cliente'&&(
         <Modal title={form.id?'Editar Cliente':'Novo Cliente'} onClose={closeModal}>
-          <Lbl>Nome *</Lbl><Inp value={form.nome} onChange={F('nome')} placeholder="Nome completo"/>
-          <Lbl>Telefone</Lbl><Inp value={form.telefone} onChange={F('telefone')} placeholder="(11) 99999-0000"/>
-          <Lbl>E-mail</Lbl><Inp value={form.email} onChange={F('email')} placeholder="cliente@email.com"/>
+          <Lbl>Nome *</Lbl><Inp value={form.full_name} onChange={F('full_name')} placeholder="Nome completo"/>
+          <Lbl>Telefone</Lbl><Inp value={form.phone} onChange={F('phone')} placeholder="(11) 99999-0000"/>
           {ferr&&<Box cor="vermelho">{ferr}</Box>}
           <div style={{display:'flex',gap:10,marginTop:18}}>
             <button className="btn-pk" style={{flex:1}} onClick={saveCl}>Salvar</button>
@@ -842,25 +876,9 @@ export default function Admin() {
       {/* ══ MODAL PROFISSIONAL ══ */}
       {modal==='profissional'&&(
         <Modal title={form.id?'Editar Profissional':'Novo Profissional'} onClose={closeModal}>
-          <Lbl>Nome *</Lbl><Inp value={form.nome} onChange={F('nome')} placeholder="Nome"/>
-          <Lbl>Especialidade</Lbl><Inp value={form.especialidade} onChange={F('especialidade')} placeholder="Ex: Cabelereira"/>
-          <Lbl>Tipo de serviço</Lbl>
-          <Sel value={form.tipo||'cabelereiro'} onChange={F('tipo')}>
-            <option value="cabelereiro">✂️ Cabelereiro / Barbeiro</option>
-            <option value="manicure">💅 Manicure / Pedicure</option>
-            <option value="estetica">🌿 Esteticista</option>
-          </Sel>
-          <Lbl>Comissão (%)</Lbl><Inp type="number" value={form.comissao} onChange={F('comissao')} placeholder="40"/>
-          <Lbl>Início do expediente</Lbl>
-          <Sel value={form.hi||'08:00'} onChange={F('hi')}>{HORARIOS.map(h=><option key={h}>{h}</option>)}</Sel>
-          <Lbl>Fim do expediente</Lbl>
-          <Sel value={form.hf||'18:00'} onChange={F('hf')}>{HORARIOS.map(h=><option key={h}>{h}</option>)}</Sel>
-          <Lbl>Status</Lbl>
-          <Sel value={form.status||'disponivel'} onChange={F('status')}>
-            <option value="disponivel">Disponível</option>
-            <option value="ocupado">Ocupado</option>
-            <option value="ausente">Ausente</option>
-          </Sel>
+          {!form.id&&<><Lbl>Nome *</Lbl><Inp value={form.full_name} onChange={F('full_name')} placeholder="Nome completo"/><Lbl>Telefone</Lbl><Inp value={form.phone} onChange={F('phone')} placeholder="(11) 99999-0000"/></>}
+          <Lbl>Especialidade</Lbl><Inp value={form.specialty} onChange={F('specialty')} placeholder="Ex: Cabelereira"/>
+          <Lbl>Comissão (%)</Lbl><Inp type="number" value={form.commission_pct} onChange={F('commission_pct')} placeholder="40"/>
           {!form.id&&<Box cor="verde">🔑 Senha padrão: <strong>123456</strong></Box>}
           {ferr&&<Box cor="vermelho">{ferr}</Box>}
           <div style={{display:'flex',gap:10,marginTop:18}}>
@@ -873,14 +891,14 @@ export default function Admin() {
       {/* ══ MODAL SERVIÇO ══ */}
       {modal==='servico'&&(
         <Modal title={form.id?'Editar Serviço':'Novo Serviço'} onClose={closeModal}>
-          <Lbl>Nome *</Lbl><Inp value={form.nome} onChange={F('nome')} placeholder="Ex: Corte Feminino"/>
+          <Lbl>Nome *</Lbl><Inp value={form.name} onChange={F('name')} placeholder="Ex: Corte Feminino"/>
           <Lbl>Categoria</Lbl>
-          <Sel value={form.categoria||'Corte'} onChange={v=>{setForm(f=>({...f,categoria:v,tipo:CATS[v]||'cabelereiro'}))}}>
-            {Object.keys(CATS).map(c=><option key={c}>{c}</option>)}
+          <Sel value={form.categoria||''} onChange={v=>setForm(f=>({...f,categoria:v,category_id:cats.find(c=>c.name===v)?.id}))}>
+            <option value="">Selecionar...</option>
+            {cats.map(c=><option key={c.id}>{c.name}</option>)}
           </Sel>
-          <Box cor="azul">Tipo automático: {CATS[form.categoria]||'cabelereiro'}</Box>
-          <Lbl>Preço (R$)</Lbl><Inp type="number" value={form.preco} onChange={F('preco')} placeholder="0"/>
-          <Lbl>Duração (min)</Lbl><Inp type="number" value={form.duracao} onChange={F('duracao')} placeholder="30"/>
+          <Lbl>Preço (R$)</Lbl><Inp type="number" value={form.price} onChange={F('price')} placeholder="0"/>
+          <Lbl>Duração (min)</Lbl><Inp type="number" value={form.duration_min} onChange={F('duration_min')} placeholder="30"/>
           {ferr&&<Box cor="vermelho">{ferr}</Box>}
           <div style={{display:'flex',gap:10,marginTop:18}}>
             <button className="btn-pk" style={{flex:1}} onClick={saveSrv}>Salvar</button>
