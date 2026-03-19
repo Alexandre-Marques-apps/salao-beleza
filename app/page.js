@@ -1,6 +1,5 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '../../lib/supabase'
 
 const ADMIN_USER = 'Alexandre'
 const ADMIN_PASS = '123456'
