@@ -260,8 +260,9 @@ function PainelAdmin({onLogout}) {
   async function saveSrv(){
     if(!form.name){setFerr('Informe o nome');return}
     const cat=cats.find(c=>c.name===form.categoria)
+    // usa o tipo escolhido explicitamente pelo admin, com fallback pela categoria
     const tipoUnha=['Unhas','Estética']
-    const tipo=tipoUnha.includes(form.categoria)?'manicure':'cabelereiro'
+    const tipo=form.tipo||(tipoUnha.includes(form.categoria)?'manicure':'cabelereiro')
     const {error}=form.id?await supabase.from('services').update({name:form.name.trim(),price:Number(form.price)||0,duration_min:Number(form.duration_min)||30,category_id:cat?.id||null,tipo,active:true}).eq('id',form.id):await supabase.from('services').insert({name:form.name.trim(),price:Number(form.price)||0,duration_min:Number(form.duration_min)||30,category_id:cat?.id||null,tipo,active:true})
     if(error){setFerr('Erro: '+error.message);return}
     closeModal();shToast('Serviço salvo!');load()
@@ -576,7 +577,7 @@ function PainelAdmin({onLogout}) {
                       <div style={{textAlign:'center'}}><div style={{fontSize:11,fontWeight:700,color:PD}}>{(p.schedule_start||'').slice(0,5)}–{(p.schedule_end||'').slice(0,5)}</div><div style={{fontSize:9,color:'rgba(0,0,0,.35)',letterSpacing:1,textTransform:'uppercase'}}>Horário</div></div>
                     </div>
                     <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                      <button className="btn-ot" onClick={()=>openModal('profissional',p)}>✏️ Editar</button>
+                      <button className="btn-ot" onClick={()=>openModal('profissional',{...p,tipo:p.tipo||'cabelereiro'})}>✏️ Editar</button>
                       <button className="btn-rd" onClick={()=>{if(window.confirm('Remover?'))supabase.from('salon_professionals').update({active:false}).eq('id',p.id).then(()=>{shToast('Removido!');load()})}}>✕ Remover</button>
                     </div>
                   </div>
@@ -733,7 +734,15 @@ function PainelAdmin({onLogout}) {
           <Sel value={form.categoria||''} onChange={v=>setForm(f=>({...f,categoria:v,category_id:cats.find(c=>c.name===v)?.id}))}>
             <option value="">Selecionar...</option>{cats.map(c=><option key={c.id}>{c.name}</option>)}
           </Sel>
-          {form.categoria&&<Box cor={['Unhas','Estética'].includes(form.categoria)?'azul':'verde'}>{['Unhas','Estética'].includes(form.categoria)?'💅 Classe: Unhas / Estética':'✂️ Classe: Cabelo / Barba'}</Box>}
+          <Lbl>Classe *</Lbl>
+          <Sel value={form.tipo||(['Unhas','Estética'].includes(form.categoria)?'manicure':'cabelereiro')} onChange={F('tipo')}>
+            <option value="cabelereiro">✂️ Cabelereiro / Barbeiro</option>
+            <option value="manicure">💅 Manicure / Pedicure / Estética</option>
+          </Sel>
+          {(form.tipo||'cabelereiro')==='manicure'
+            ?<Box cor="azul">💅 Somente profissionais da classe <strong>Manicure</strong> podem realizar este serviço.</Box>
+            :<Box cor="verde">✂️ Somente profissionais da classe <strong>Cabelereiro</strong> podem realizar este serviço.</Box>
+          }
           <Lbl>Preço (R$)</Lbl><Inp type="number" value={form.price} onChange={F('price')} placeholder="0"/>
           <Lbl>Duração (min)</Lbl><Inp type="number" value={form.duration_min} onChange={F('duration_min')} placeholder="30"/>
           {ferr&&<Box cor="vermelho">{ferr}</Box>}
