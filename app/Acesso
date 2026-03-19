@@ -206,7 +206,9 @@ function PainelAdmin({onLogout}) {
   function srvsCompativeis(nomeProf){
     const p=profs.find(x=>x.full_name===nomeProf)
     if(!p) return srvs
-    return srvs.filter(s=>(s.tipo||'cabelereiro')===(p.tipo||'cabelereiro'))
+    // Se profissional não tem tipo definido, retorna lista vazia com aviso
+    if(!p.tipo) return []
+    return srvs.filter(s=>s.tipo===p.tipo)
   }
 
   async function saveAg(){
@@ -214,7 +216,10 @@ function PainelAdmin({onLogout}) {
     if(!form.client_name||!form.service_name||!form.professional_name||!form.data||!form.start_time){setFerr('Preencha todos os campos');return}
     const prof=profs.find(p=>p.full_name===form.professional_name)
     const srv=srvs.find(s=>s.name===form.service_name)
-    if(prof&&srv&&(prof.tipo||'cabelereiro')!==(srv.tipo||'cabelereiro')){setFerr(`⚠️ ${form.professional_name} não realiza este tipo de serviço`);return}
+    // BLOQUEIA se tipos forem diferentes — sem fallback enganoso
+    if(!prof?.tipo){ setFerr('⚠️ Profissional sem classe definida. Edite o cadastro e defina Cabelereiro ou Manicure.'); return }
+    if(!srv?.tipo){ setFerr('⚠️ Serviço sem classe definida. Edite o cadastro do serviço.'); return }
+    if(prof.tipo !== srv.tipo){ setFerr(`❌ ${form.professional_name} é ${prof.tipo==='manicure'?'Manicure':'Cabelereiro'} e não pode realizar "${form.service_name}" (${srv.tipo==='manicure'?'Manicure':'Cabelereiro'})`); return }
     const payload={client_name:form.client_name,service_name:form.service_name,professional_name:form.professional_name,booking_date:dmyToISO(form.data),start_time:form.start_time.length===5?form.start_time+':00':form.start_time,status:'scheduled',price_charged:srv?.price||0,service_price:srv?.price||0,duration_min:srv?.duration_min||30}
     const {error}=form.id?await supabase.from('salon_bookings').update(payload).eq('id',form.id):await supabase.from('salon_bookings').insert(payload)
     if(error){setFerr('Erro: '+error.message);return}
@@ -288,8 +293,10 @@ function PainelAdmin({onLogout}) {
     const intervalos=agRows
       .filter(a=>a.professional_name===n&&a.data===d&&a.status!=='cancelled'&&a.id!==form.id)
       .map(a=>{
+        // usa duration_min salvo no agendamento, ou busca no catálogo, ou padrão 30
+        const durBanco=Number(a.duration_min)||0
         const srv=srvs.find(s=>s.name===a.service_name)
-        const dur=Number(srv?.duration_min)||30
+        const dur=durBanco||Number(srv?.duration_min)||30
         return {ini:toMin(a.horario), fim:toMin(a.horario)+dur}
       })
 
@@ -668,10 +675,32 @@ function PainelAdmin({onLogout}) {
       {/* MODAIS ADMIN */}
       {modal==='agendamento'&&form.profissionalFixo&&(
         <Modal title={`${form.professional_name} · ${form.start_time}`} onClose={closeModal}>
-          <Box cor="rosa">👤 <strong>{form.professional_name}</strong> &nbsp;·&nbsp; 📅 {form.data} &nbsp;·&nbsp; 🕐 {form.start_time}</Box>
+          {(() => {
+            const p=profs.find(x=>x.full_name===form.professional_name)
+            const tipoBadge=p?.tipo==='manicure'?'💅 Manicure':'✂️ Cabelereiro'
+            const corBadge=p?.tipo==='manicure'?'#7b1fa2':'#2e7d32'
+            const bgBadge=p?.tipo==='manicure'?'#f3e5f5':'#e8f5e9'
+            return(
+              <div style={{background:'#fce4ec',borderRadius:10,padding:'12px 14px',marginBottom:4,display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}>
+                <div><div style={{fontSize:9,letterSpacing:2,textTransform:'uppercase',color:'rgba(194,24,91,.5)',marginBottom:2}}>Profissional</div><div style={{fontSize:14,fontWeight:700,color:'#c2185b'}}>{form.professional_name}</div></div>
+                <div><div style={{fontSize:9,letterSpacing:2,textTransform:'uppercase',color:'rgba(194,24,91,.5)',marginBottom:2}}>Data</div><div style={{fontSize:14,fontWeight:700,color:'#c2185b'}}>{form.data}</div></div>
+                <div><div style={{fontSize:9,letterSpacing:2,textTransform:'uppercase',color:'rgba(194,24,91,.5)',marginBottom:2}}>Horário</div><div style={{fontSize:14,fontWeight:700,color:'#c2185b'}}>{form.start_time}</div></div>
+                <span style={{padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:700,background:bgBadge,color:corBadge}}>{tipoBadge}</span>
+              </div>
+            )
+          })()}
+          {!profs.find(x=>x.full_name===form.professional_name)?.tipo&&(
+            <Box cor="vermelho">⚠️ Profissional sem classe definida. Vá em Profissionais → Editar e defina a classe antes de agendar.</Box>
+          )}
           <Lbl>Cliente *</Lbl><Sel value={form.client_name||''} onChange={F('client_name')}><option value="">Selecionar...</option>{cls.map(c=><option key={c.id}>{c.full_name}</option>)}</Sel>
-          <Lbl>Serviço * (apenas compatíveis com {form.professional_name?.split(' ')[0]})</Lbl>
-          <Sel value={form.service_name||''} onChange={F('service_name')}><option value="">Selecionar...</option>{srvsCompativeis(form.professional_name).map(s=><option key={s.id}>{s.name}</option>)}</Sel>
+          <Lbl>Serviço * — apenas da classe {profs.find(x=>x.full_name===form.professional_name)?.tipo==='manicure'?'💅 Manicure':'✂️ Cabelereiro'}</Lbl>
+          <Sel value={form.service_name||''} onChange={F('service_name')}>
+            <option value="">Selecionar...</option>
+            {srvsCompativeis(form.professional_name).length===0
+              ?<option disabled>⚠️ Nenhum serviço compatível — verifique o cadastro</option>
+              :srvsCompativeis(form.professional_name).map(s=><option key={s.id}>{s.name}</option>)
+            }
+          </Sel>
           {ferr&&<Box cor="vermelho">{ferr}</Box>}
           <div style={{display:'flex',gap:10,marginTop:18}}><button className="btn-pk" style={{flex:1}} onClick={saveAg}>Salvar</button><button className="btn-ot" onClick={closeModal}>Cancelar</button></div>
         </Modal>
