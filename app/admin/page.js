@@ -669,6 +669,10 @@ export default function Admin() {
                                 <div>{p.full_name}</div>
                                 <div style={{fontSize:9,opacity:.7,fontWeight:400}}>{p.specialty}</div>
                                 <div style={{fontSize:9,opacity:.6,fontWeight:400}}>{(p.schedule_start||'').slice(0,5)}–{(p.schedule_end||'').slice(0,5)}</div>
+                                <div style={{fontSize:8,fontWeight:700,opacity:.8,marginTop:2,
+                                  color:(p.tipo||'cabelereiro')==='manicure'?'#7b1fa2':'#2e7d32'}}>
+                                  {(p.tipo||'cabelereiro')==='manicure'?'💅 Unhas':'✂️ Cabelo'}
+                                </div>
                               </th>
                             ))}
                           </tr>
@@ -689,6 +693,7 @@ export default function Admin() {
                                   ? 'linear-gradient(135deg,#c8e6c9,#a5d6a7)'
                                   : 'linear-gradient(135deg,#fce4ec,#f8bbd0)'
                                 const cc = cel?.status==='completed' ? '#1b5e20' : PD
+                                const finalizado = cel?.status==='completed'
                                 return (
                                   <td
                                     key={p.id}
@@ -704,7 +709,10 @@ export default function Admin() {
                                         <div style={{fontSize:11,fontWeight:700,color:cc,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{cel.client_name}</div>
                                         <div style={{fontSize:10,color:'rgba(0,0,0,.5)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{cel.service_name}</div>
                                         {cel.valorCobrado>0 && <div style={{fontSize:10,fontWeight:600,color:cc}}>R$ {cel.valorCobrado}</div>}
-                                        <button className="del-btn" onClick={e=>{e.stopPropagation();delAg(cel.id)}} title="Excluir">🗑</button>
+                                        {/* lixeira só aparece se NÃO for finalizado */}
+                                        {!finalizado && (
+                                          <button className="del-btn" onClick={e=>{e.stopPropagation();delAg(cel.id)}} title="Excluir">🗑</button>
+                                        )}
                                       </div>
                                     )}
                                   </td>
@@ -792,7 +800,13 @@ export default function Admin() {
                     <div key={p.id} className="prof-card">
                       <div style={{width:46,height:46,borderRadius:'50%',background:`linear-gradient(135deg,#f48fb1,${P})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:17,fontWeight:700,color:'#fff',margin:'0 auto 10px'}}>{(p.full_name||'?')[0]}</div>
                       <div style={{fontSize:14,fontWeight:700,marginBottom:2}}>{p.full_name}</div>
-                      <div style={{fontSize:11,color:'rgba(0,0,0,.4)',marginBottom:8}}>{p.specialty}</div>
+                      <div style={{fontSize:11,color:'rgba(0,0,0,.4)',marginBottom:6}}>{p.specialty}</div>
+                      {/* badge de categoria */}
+                      <span style={{display:'inline-block',padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:700,marginBottom:10,
+                        background:(p.tipo||'cabelereiro')==='manicure'?'#f3e5f5':'#e8f5e9',
+                        color:(p.tipo||'cabelereiro')==='manicure'?'#7b1fa2':'#2e7d32'}}>
+                        {(p.tipo||'cabelereiro')==='manicure'?'💅 Manicure / Estética':'✂️ Cabelereiro / Barbeiro'}
+                      </span>
                       <div style={{display:'flex',justifyContent:'center',gap:12,marginBottom:12}}>
                         <div style={{textAlign:'center'}}>
                           <div style={{fontSize:14,fontWeight:700,color:PD}}>{p.commission_pct}%</div>
@@ -826,7 +840,13 @@ export default function Admin() {
                       <div style={{fontSize:9,fontWeight:700,letterSpacing:3,textTransform:'uppercase',color:P,marginBottom:4}}>{s.service_categories?.name||'—'}</div>
                       <div style={{fontSize:13,fontWeight:700,marginBottom:2}}>{s.name}</div>
                       <div style={{fontFamily:'Playfair Display,serif',fontSize:19,fontWeight:700,color:PD,marginBottom:2}}>R$ {s.price}</div>
-                      <div style={{fontSize:11,color:'rgba(0,0,0,.4)',marginBottom:8}}>⏱ {s.duration_min} min</div>
+                      <div style={{fontSize:11,color:'rgba(0,0,0,.4)',marginBottom:6}}>⏱ {s.duration_min} min</div>
+                      {/* badge de classe */}
+                      <span style={{display:'inline-block',padding:'3px 9px',borderRadius:20,fontSize:10,fontWeight:700,marginBottom:10,
+                        background:(s.tipo||'cabelereiro')==='manicure'?'#f3e5f5':'#e8f5e9',
+                        color:(s.tipo||'cabelereiro')==='manicure'?'#7b1fa2':'#2e7d32'}}>
+                        {(s.tipo||'cabelereiro')==='manicure'?'💅 Unhas / Estética':'✂️ Cabelo / Barba'}
+                      </span>
                       <div style={{display:'flex',gap:6}}>
                         <button className="btn-ot" style={{flex:1,fontSize:10}} onClick={()=>openModal('servico',{...s,categoria:s.service_categories?.name||''})}>Editar</button>
                         <button className="btn-rd" style={{fontSize:10}} onClick={()=>delSrv(s.id)}>🗑</button>
