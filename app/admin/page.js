@@ -206,6 +206,11 @@ export default function Admin() {
   }
 
   async function delAg(id) {
+    const ag = agRows.find(a => a.id === id)
+    if(ag?.status === 'completed') {
+      alert('❌ Atendimentos finalizados não podem ser excluídos.')
+      return
+    }
     if(!window.confirm('Excluir este agendamento?')) return
     const {error} = await supabase.from('salon_bookings').delete().eq('id',id)
     if(error) { shToast('Erro: '+error.message, false); return }
@@ -214,17 +219,25 @@ export default function Admin() {
 
   async function confirmarFechamento() {
     if(!form.valorCobrado) { setFerr('Informe o valor cobrado'); return }
+    // busca comissão atual do profissional no momento do fechamento
+    const prof = profs.find(p => p.full_name === form.professional_name)
+    const comissao_snapshot = prof?.commission_pct || 0
+    const valor = Number(form.valorCobrado)
+    const valor_comissao = Math.round(valor * (comissao_snapshot / 100) * 100) / 100
+
     const {error} = await supabase.from('salon_bookings').update({
-      status:         'completed',
-      price_charged:  Number(form.valorCobrado),
-      payment_method: form.payment_method||'cash',
+      status:              'completed',
+      price_charged:       valor,
+      payment_method:      form.payment_method||'cash',
+      commission_pct:      comissao_snapshot,   // snapshot da % no momento
+      commission_value:    valor_comissao,       // valor fixo calculado agora
     }).eq('id', form.id)
     if(error) { setFerr('Erro: '+error.message); return }
     const cliente = cls.find(c => c.full_name === form.client_name)
     if(cliente) {
       await supabase.from('salon_clients').update({
         visits:      (cliente.visits||0)+1,
-        total_spent: (Number(cliente.total_spent)||0)+Number(form.valorCobrado),
+        total_spent: (Number(cliente.total_spent)||0)+valor,
         last_visit:  dmyToISO(form.data),
       }).eq('id', cliente.id)
     }
@@ -724,7 +737,9 @@ export default function Admin() {
                             {a.status!=='completed'&&a.status!=='cancelled' && (
                               <button className="btn-gr" style={{fontSize:10,padding:'5px 8px'}} onClick={()=>openModal('fechamento',{...a,valorCobrado:a.valorOriginal})}>✓</button>
                             )}
-                            <button className="btn-rd" style={{fontSize:12,padding:'5px 8px'}} onClick={()=>delAg(a.id)}>🗑</button>
+                            {a.status!=='completed' && (
+                              <button className="btn-rd" style={{fontSize:12,padding:'5px 8px'}} onClick={()=>delAg(a.id)}>🗑</button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -862,11 +877,15 @@ export default function Admin() {
                       <thead><tr><th>Profissional</th><th>%</th><th>Comissão</th></tr></thead>
                       <tbody>{profs.map(p=>{
                         const base = agRows.filter(a=>a.professional_name===p.full_name&&a.status==='completed').reduce((s,a)=>s+a.valorCobrado,0)
+                        // usa commission_value salvo no momento do fechamento (snapshot)
+                        const comissaoTotal = ags
+                          .filter(a=>a.professional_name===p.full_name&&a.status==='completed')
+                          .reduce((s,a)=>s+(Number(a.commission_value)||Math.round(a.price_charged*(a.commission_pct||p.commission_pct)/100)),0)
                         return (
                           <tr key={p.id}>
                             <td style={{fontWeight:600}}>{p.full_name}</td>
                             <td><span className="bdg" style={{background:'#f3e5f5',color:'#7b1fa2'}}>{p.commission_pct}%</span></td>
-                            <td style={{fontWeight:700,color:PD}}>R$ {Math.round(base*(p.commission_pct/100))}</td>
+                            <td style={{fontWeight:700,color:PD}}>R$ {comissaoTotal.toFixed(2)}</td>
                           </tr>
                         )
                       })}</tbody>
