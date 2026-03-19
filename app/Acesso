@@ -215,7 +215,7 @@ function PainelAdmin({onLogout}) {
     const prof=profs.find(p=>p.full_name===form.professional_name)
     const srv=srvs.find(s=>s.name===form.service_name)
     if(prof&&srv&&(prof.tipo||'cabelereiro')!==(srv.tipo||'cabelereiro')){setFerr(`⚠️ ${form.professional_name} não realiza este tipo de serviço`);return}
-    const payload={client_name:form.client_name,service_name:form.service_name,professional_name:form.professional_name,booking_date:dmyToISO(form.data),start_time:form.start_time.length===5?form.start_time+':00':form.start_time,status:'scheduled',price_charged:srv?.price||0,service_price:srv?.price||0}
+    const payload={client_name:form.client_name,service_name:form.service_name,professional_name:form.professional_name,booking_date:dmyToISO(form.data),start_time:form.start_time.length===5?form.start_time+':00':form.start_time,status:'scheduled',price_charged:srv?.price||0,service_price:srv?.price||0,duration_min:srv?.duration_min||30}
     const {error}=form.id?await supabase.from('salon_bookings').update(payload).eq('id',form.id):await supabase.from('salon_bookings').insert(payload)
     if(error){setFerr('Erro: '+error.message);return}
     closeModal();shToast('Agendamento salvo!');load()
@@ -274,11 +274,38 @@ function PainelAdmin({onLogout}) {
   const fatHoje=agRows.filter(a=>a.data===hoje&&a.status==='completed').reduce((s,a)=>s+a.valorCobrado,0)
   const fatMes=agRows.filter(a=>a.status==='completed').reduce((s,a)=>s+a.valorCobrado,0)
   function getCel(h,n){return agendaDia.find(a=>a.horario===h&&a.professional_name===n)}
+  // helpers de tempo
+  function toMin(hhmm){ const[h,m]=(hhmm||'00:00').split(':');return Number(h)*60+Number(m) }
+
   function horariosLivres(n,d){
-    if(!n||!d)return HORARIOS
+    if(!n||!d) return HORARIOS
     const p=profs.find(x=>x.full_name===n)
-    const hi=(p?.schedule_start||'00:00').slice(0,5),hf=(p?.schedule_end||'23:59').slice(0,5)
-    return HORARIOS.filter(h=>h>=hi&&h<=hf&&isFuturo(d,h)&&!agRows.find(a=>a.professional_name===n&&a.data===d&&a.horario===h&&a.status!=='cancelled'&&a.id!==form.id))
+    const hi=(p?.schedule_start||'00:00').slice(0,5)
+    const hf=(p?.schedule_end||'23:59').slice(0,5)
+
+    // intervalos ocupados: {ini, fim} em minutos
+    const intervalos=agRows
+      .filter(a=>a.professional_name===n&&a.data===d&&a.status!=='cancelled'&&a.id!==form.id)
+      .map(a=>{
+        const srv=srvs.find(s=>s.name===a.service_name)
+        const dur=Number(srv?.duration_min)||30
+        return {ini:toMin(a.horario), fim:toMin(a.horario)+dur}
+      })
+
+    // duração do serviço sendo agendado agora
+    const srvAtual=srvs.find(s=>s.name===form.service_name)
+    const durAtual=Number(srvAtual?.duration_min)||30
+
+    return HORARIOS.filter(h=>{
+      if(h<hi||h>hf) return false
+      if(!isFuturo(d,h)) return false
+      const ini=toMin(h), fim=ini+durAtual
+      // sobreposição: novo serviço [ini,fim) conflita com qualquer ocupado [iv.ini,iv.fim)
+      if(intervalos.some(iv=>ini<iv.fim&&fim>iv.ini)) return false
+      // não pode ultrapassar fim do expediente
+      if(fim>toMin(hf)+1) return false
+      return true
+    })
   }
   const clsFilt=cls.filter(c=>(c.full_name||'').toLowerCase().includes(busca.toLowerCase())||(c.phone||'').includes(busca))
   const menus=[{id:'dashboard',icon:'◈',label:'Dashboard'},{id:'agenda',icon:'◷',label:'Agenda'},{id:'clientes',icon:'◉',label:'Clientes'},{id:'profissionais',icon:'✦',label:'Profissionais'},{id:'servicos',icon:'✂',label:'Serviços'},{id:'financeiro',icon:'◎',label:'Financeiro'},{id:'configuracoes',icon:'⊙',label:'Config.'}]
