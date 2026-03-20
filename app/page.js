@@ -2,274 +2,333 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 
-// CONFIGURAÇÃO VISUAL - AURA LUXE / L'ATELIER SALON
+// CONFIGURAÇÃO VISUAL - CLEAN DASHBOARD
 const THEME = {
-  gold: '#8B5E34',        // Ocre/Dourado Aura
-  goldLight: '#AF8B58',
-  bg: '#F8F6F2',          // Fundo Off-white
+  bg: '#F4F4F4',
+  sidebar: '#EFEFEF',
   card: '#FFFFFF',
-  text: '#1A1A1A',        // Preto suave
+  primary: '#000000',
+  text: '#1A1A1A',
   textLight: '#7A7A7A',
-  danger: '#A63D40',
-  success: '#4A6741',
-  busy: '#EFEBE6'         // Cor para slots ocupados
+  border: '#EAEAEA',
+  accent: '#000000',
+  success: '#27AE60'
 }
 
-const HORARIOS = [
-  '08:00','08:15','08:30','08:45','09:00','09:15','09:30','09:45',
-  '10:00','10:15','10:30','10:45','11:00','11:15','11:30','11:45',
-  '12:00','12:15','12:30','12:45','13:00','13:15','13:30','13:45',
-  '14:00','14:15','14:30','14:45','15:00','15:15','15:30','15:45',
-  '16:00','16:15','16:30','16:45','17:00','17:15','17:30','17:45','18:00',
-]
+const HORARIOS = Array.from({ length: 41 }, (_, i) => {
+  const h = Math.floor((8 * 60 + i * 15) / 60)
+  const m = (i * 15) % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+})
 
 // HELPERS
-const timeToMin = (t) => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
-const isPast = (date, time) => {
-  const now = new Date();
-  const selected = new Date(`${date}T${time || '00:00'}:00`);
-  return selected < now;
-};
-
-// ── COMPONENTES DE UI LUXO ─────────────────────────────────────────
-const AuraCard = ({ children, style }) => (
-  <div style={{ background: THEME.card, borderRadius: 12, border: '1px solid #EAE8E4', padding: 24, boxShadow: '0 2px 10px rgba(0,0,0,0.02)', ...style }}>
-    {children}
-  </div>
-);
-
-const GoldButton = ({ children, onClick, style, variant = 'full' }) => (
-  <button onClick={onClick} style={{
-    background: variant === 'full' ? THEME.gold : 'transparent',
-    color: variant === 'full' ? '#FFF' : THEME.gold,
-    border: variant === 'full' ? 'none' : `1.5px solid ${THEME.gold}`,
-    padding: '12px 24px', borderRadius: 8, fontSize: 11, fontWeight: 700, 
-    letterSpacing: 1, textTransform: 'uppercase', cursor: 'pointer', ...style
-  }}>
-    {children}
-  </button>
-);
-
-// ── TELA DE LOGIN LUXO ─────────────────────────────────────────────
-function LoginScreen({ onLoginSuccess }) {
-  const [user, setUser] = useState('');
-  const [pass, setPass] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  async function handleLogin() {
-    setLoading(true);
-    if (user === 'Alexandre' && pass === '123456') {
-      onLoginSuccess('admin', { full_name: 'Alexandre' });
-      return;
-    }
-    const { data, error } = await supabase.from('salon_professionals').select('*').ilike('full_name', user.trim()).eq('active', true).single();
-    if (!error && data && (data.senha || '123456') === pass) {
-      onLoginSuccess('profissional', data);
-    } else { alert('Credentials Incorrect.'); }
-    setLoading(false);
-  }
-
-  return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: THEME.bg }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@400;600&display=swap');`}</style>
-      <div style={{ width: 400, textAlign: 'center', fontFamily: '"Inter", sans-serif' }}>
-        <h1 style={{ fontFamily: '"Playfair Display", serif', fontSize: 36, color: THEME.gold, marginBottom: 40 }}>Aura Luxe</h1>
-        <AuraCard>
-          <p style={{ fontSize: 11, color: THEME.textLight, letterSpacing: 2, marginBottom: 30 }}>PREMIUM SALON MANAGEMENT</p>
-          <input placeholder="Username" value={user} onChange={e => setUser(e.target.value)} style={{ width: '100%', padding: 14, borderRadius: 8, border: '1px solid #EAE8E4', marginBottom: 12, outline: 'none' }} />
-          <input type="password" placeholder="Password" value={pass} onChange={e => setPass(e.target.value)} style={{ width: '100%', padding: 14, borderRadius: 8, border: '1px solid #EAE8E4', marginBottom: 25, outline: 'none' }} />
-          <GoldButton onClick={handleLogin} style={{ width: '100%' }}>{loading ? 'Entering...' : 'Sign In'}</GoldButton>
-        </AuraCard>
-      </div>
-    </div>
-  );
+const timeToMin = (t) => {
+  if (!t) return 0
+  const [h, m] = t.split(':').map(Number)
+  return h * 60 + m
 }
 
-// ── PAINEL PRINCIPAL ─────────────────────────────────────────
-export default function SalonApp() {
-  const [role, setRole] = useState(null);
-  const [me, setMe] = useState(null);
-  const [tab, setTab] = useState('dashboard');
-  const [viewDate, setViewDate] = useState(new Date().toISOString().split('T')[0]);
-  
-  const [profs, setProfs] = useState([]);
-  const [services, setServices] = useState([]);
-  const [bookings, setBookings] = useState([]);
-  const [clients, setClients] = useState([]);
-  const [loading, setLoading] = useState(true);
+const isPast = (date, time) => {
+  if (!date || !time) return false
+  return new Date(`${date}T${time}:00`) < new Date()
+}
 
-  const [showModal, setShowModal] = useState(false);
-  const [modalType, setModalType] = useState('');
-  const [form, setForm] = useState({});
+// ── TELA DE LOGIN ────────────────────────────────────────────
+function LoginScreen({ onLoginSuccess }) {
+  const [user, setUser] = useState('')
+  const [pass, setPass] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    const [p, s, b, c] = await Promise.all([
-      supabase.from('salon_professionals').select('*').eq('active', true),
-      supabase.from('services').select('*').eq('active', true),
-      supabase.from('salon_bookings').select('*'),
-      supabase.from('salon_clients').select('*')
-    ]);
-    setProfs(p.data || []); setServices(s.data || []); setBookings(b.data || []); setClients(c.data || []);
-    setLoading(false);
-  }, []);
+  async function handleLogin() {
+    setLoading(true)
+    if (user === 'Alexandre' && pass === '123456') {
+      onLoginSuccess('admin', { full_name: 'Alexandre' })
+      return
+    }
 
-  useEffect(() => { loadData() }, [loadData]);
+    const { data, error } = await supabase
+      .from('salon_professionals')
+      .select('*')
+      .ilike('full_name', user.trim())
+      .eq('active', true)
+      .single()
 
-  const isOccupied = (profName, date, time) => {
-    const slotMin = timeToMin(time);
-    return bookings.find(b => {
-      if(b.booking_date !== date || b.professional_name !== profName || b.status === 'cancelled') return false;
-      const start = timeToMin(b.start_time.slice(0, 5));
-      const srv = services.find(s => s.name === b.service_name);
-      const end = start + (srv?.duration_min || 30);
-      return slotMin >= start && slotMin < end;
-    });
-  };
+    if (error || !data || (data.senha || '123456') !== pass) {
+      alert('Credenciais incorretas')
+      setLoading(false)
+      return
+    }
 
-  async function handleAction() {
-    if (isPast(viewDate, form.time)) return alert("Date/Time is past.");
-    const srv = services.find(s => s.name === form.service_name);
-    const prof = profs.find(p => p.full_name === (form.profId || form.professional_name));
-    
-    const payload = {
-      client_name: form.client_name, service_name: srv.name, professional_name: prof.full_name,
-      booking_date: form.booking_date || viewDate, start_time: (form.time || form.start_time).slice(0,5) + ':00',
-      service_price: srv.price, commission_pct: prof.commission_pct, status: 'scheduled'
-    };
-
-    if (form.id) await supabase.from('salon_bookings').update(payload).eq('id', form.id);
-    else await supabase.from('salon_bookings').insert(payload);
-    setShowModal(false); loadData();
+    onLoginSuccess('profissional', data)
+    setLoading(false)
   }
 
-  if (!role) return <LoginScreen onLoginSuccess={(r, u) => { setRole(r); setMe(u); }} />;
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', background: THEME.bg, fontFamily: 'sans-serif' }}>
+      <div style={{ width: 350, background: '#fff', padding: 40, borderRadius: 20, boxShadow: '0 10px 25px rgba(0,0,0,0.05)', textAlign: 'center' }}>
+        <div style={{ fontWeight: 800, fontSize: 24, marginBottom: 10 }}>JOUDAT</div>
+        <p style={{ color: THEME.textLight, fontSize: 12, marginBottom: 30 }}>ACESSAR DASHBOARD</p>
+        <input placeholder="Usuário" value={user} onChange={e => setUser(e.target.value)} style={{ width: '100%', padding: 12, marginBottom: 15, borderRadius: 8, border: '1px solid #ddd', outline: 'none' }} />
+        <input type="password" placeholder="Senha" value={pass} onChange={e => setPass(e.target.value)} style={{ width: '100%', padding: 12, marginBottom: 25, borderRadius: 8, border: '1px solid #ddd', outline: 'none' }} />
+        <button onClick={handleLogin} style={{ width: '100%', padding: 12, borderRadius: 8, background: '#000', color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer' }}>
+          {loading ? 'Entrando...' : 'Entrar'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── APP PRINCIPAL ─────────────────────────────────────────────
+export default function SalonApp() {
+  const [role, setRole] = useState(null)
+  const [me, setMe] = useState(null)
+  const [tab, setTab] = useState('dashboard')
+  const [viewDate, setViewDate] = useState(new Date().toISOString().split('T')[0])
+
+  const [profs, setProfs] = useState([])
+  const [services, setServices] = useState([])
+  const [bookings, setBookings] = useState([])
+  const [form, setForm] = useState({})
+  const [showModal, setShowModal] = useState(false)
+
+  const loadData = useCallback(async () => {
+    const [p, s, b] = await Promise.all([
+      supabase.from('salon_professionals').select('*').eq('active', true),
+      supabase.from('services').select('*').eq('active', true),
+      supabase.from('salon_bookings').select('*')
+    ])
+    setProfs(p.data || [])
+    setServices(s.data || [])
+    setBookings(b.data || [])
+  }, [])
+
+  useEffect(() => { loadData() }, [loadData])
+
+  // LÓGICA DE OCUPAÇÃO POR DURAÇÃO
+  const checkOccupied = (profName, date, time) => {
+    const slot = timeToMin(time)
+    return bookings.find(b => {
+      if (b.booking_date !== date || b.professional_name !== profName || b.status === 'cancelled') return false
+      const start = timeToMin(b.start_time.slice(0, 5))
+      const srv = services.find(s => s.name === b.service_name)
+      const end = start + (srv?.duration_min || 30)
+      return slot >= start && slot < end
+    })
+  }
+
+  const handleSave = async () => {
+    if (!form.client_name || !form.service_name || !form.time) return alert('Preencha os dados')
+    if (isPast(viewDate, form.time)) return alert('Não é possível agendar no passado')
+
+    const srv = services.find(s => s.name === form.service_name)
+    const prof = profs.find(p => p.full_name === (form.profId || form.professional_name))
+
+    const payload = {
+      client_name: form.client_name,
+      service_name: srv.name,
+      professional_name: prof.full_name,
+      booking_date: viewDate,
+      start_time: form.time.slice(0, 5) + ':00',
+      status: 'scheduled',
+      price_charged: srv.price,
+      commission_pct: prof.commission_pct
+    }
+
+    if (form.id) {
+      await supabase.from('salon_bookings').update(payload).eq('id', form.id)
+    } else {
+      await supabase.from('salon_bookings').insert(payload)
+    }
+    setShowModal(false); loadData()
+  }
+
+  const handleConfirm = async (booking) => {
+    const val = Number(booking.price_charged)
+    const com = Number((val * (booking.commission_pct / 100)).toFixed(2))
+    await supabase.from('salon_bookings').update({ 
+        status: 'completed', 
+        commission_value: com 
+    }).eq('id', booking.id)
+    loadData()
+  }
+
+  if (!role) return <LoginScreen onLoginSuccess={(r, u) => { setRole(r); setMe(u) }} />
 
   return (
-    <div style={{ minHeight: '100vh', background: THEME.bg, display: 'flex', fontFamily: '"Inter", sans-serif' }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@400;600&display=swap');`}</style>
+    <div style={{ display: 'flex', minHeight: '100vh', background: THEME.bg, fontFamily: 'sans-serif' }}>
       
-      {/* SIDEBAR NAVIGATION - LOOK AURA */}
-      <aside style={{ width: 280, background: '#FFF', borderRight: '1px solid #EAE8E4', padding: '40px 24px', display: 'flex', flexDirection: 'column', position: 'fixed', height: '100vh' }}>
-        <h2 style={{ fontFamily: '"Playfair Display", serif', color: THEME.gold, fontSize: 24, marginBottom: 48 }}>Aura Luxe</h2>
-        
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {[
-            { id: 'dashboard', label: 'Dashboard', icon: '⬚', admin: true },
-            { id: 'agenda', label: 'Schedule', icon: '◷', admin: false },
-            { id: 'clientes', label: 'Clients', icon: '◎', admin: true },
-            { id: 'servicos', label: 'Services', icon: '╳', admin: true },
-          ].map(item => {
-            if (item.admin && role !== 'admin') return null;
-            const active = tab === item.id;
-            return (
-              <div key={item.id} onClick={() => setTab(item.id)} style={{
-                display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 8, cursor: 'pointer',
-                background: active ? '#F9F7F2' : 'transparent', color: active ? THEME.gold : THEME.textLight,
-                fontSize: 13, fontWeight: active ? 600 : 400, transition: '0.2s'
-              }}>
-                <span style={{ fontSize: 16 }}>{item.icon}</span> {item.label}
-              </div>
-            )
-          })}
+      {/* SIDEBAR */}
+      <aside style={{ width: 240, background: THEME.sidebar, padding: '30px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ fontWeight: 800, fontSize: 20, marginBottom: 40, paddingLeft: 10 }}>LOGO</div>
+        {[
+          { id: 'dashboard', label: 'Dashboard', icon: '■' },
+          { id: 'agenda', label: 'Agendamentos', icon: '📅' },
+          { id: 'profissionais', label: 'Profissionais', icon: '👤' },
+          { id: 'clientes', label: 'Clientes', icon: '👥' },
+          { id: 'relatorios', label: 'Relatórios', icon: '📊' },
+          { id: 'config', label: 'Configurações', icon: '⚙' },
+        ].map(item => (
+          <div key={item.id} onClick={() => setTab(item.id)} style={{
+            padding: '12px 15px', borderRadius: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12,
+            background: tab === item.id ? '#FFF' : 'transparent', fontWeight: tab === item.id ? '700' : '400',
+            boxShadow: tab === item.id ? '0 4px 10px rgba(0,0,0,0.03)' : 'none'
+          }}>
+            <span>{item.icon}</span> {item.label}
+          </div>
+        ))}
+        <div style={{ marginTop: 'auto', padding: '15px', cursor: 'pointer', color: THEME.textLight }} onClick={() => setRole(null)}>
+          ⓧ Sair
         </div>
-
-        <GoldButton onClick={() => { setForm({ client_name: '', service_name: '', profId: me.full_name, time: '08:00' }); setModalType('booking'); setShowModal(true); }}>
-          Book Appointment
-        </GoldButton>
-        <button onClick={() => setRole(null)} style={{ marginTop: 20, background: 'none', border: 'none', fontSize: 11, color: '#CCC', cursor: 'pointer' }}>Sign Out</button>
       </aside>
 
-      {/* CONTENT AREA */}
-      <main style={{ marginLeft: 280, flex: 1, padding: '60px' }}>
-        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 48 }}>
-          <h1 style={{ fontFamily: '"Playfair Display", serif', fontSize: 32 }}>{tab === 'dashboard' ? 'Monthly Performance' : tab.charAt(0).toUpperCase() + tab.slice(1)}</h1>
-          <input type="date" value={viewDate} onChange={e => setViewDate(e.target.value)} style={{ padding: '10px 20px', borderRadius: 8, border: '1px solid #EAE8E4', background: '#FFF' }} />
+      {/* MAIN CONTENT */}
+      <main style={{ flex: 1, padding: '40px' }}>
+        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 30 }}>
+          <h1 style={{ fontSize: 24, fontWeight: 700 }}>{tab.charAt(0).toUpperCase() + tab.slice(1)}</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+             <span style={{ fontSize: 13, color: THEME.textLight }}>🔔 Admin</span>
+             <div style={{ width: 35, height: 35, borderRadius: '50%', background: '#ddd' }}></div>
+          </div>
         </header>
 
         {tab === 'dashboard' && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}>
-            <AuraCard><p style={{ fontSize: 11, color: THEME.textLight }}>TOTAL REVENUE</p><h2 style={{ fontSize: 28 }}>R$ {bookings.filter(b => b.status === 'completed').reduce((acc, b) => acc + Number(b.price_charged), 0)}</h2></AuraCard>
-            <AuraCard><p style={{ fontSize: 11, color: THEME.textLight }}>TOTAL APPOINTMENTS</p><h2 style={{ fontSize: 28 }}>{bookings.length}</h2></AuraCard>
-            <AuraCard style={{ background: THEME.gold, color: '#FFF' }}><p style={{ fontSize: 11, opacity: 0.8 }}>NET PROFIT</p><h2 style={{ fontSize: 28 }}>R$ {bookings.filter(b => b.status === 'completed').reduce((acc, b) => acc + (Number(b.price_charged) - Number(b.commission_value)), 0)}</h2></AuraCard>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 25 }}>
+            {/* LEFT COLUMN */}
+            <div>
+              {/* KPIs */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20, marginBottom: 25 }}>
+                <div style={{ background: '#fff', padding: 25, borderRadius: 15 }}>
+                  <p style={{ fontSize: 12, color: THEME.textLight }}>Hoje</p>
+                  <h2 style={{ fontSize: 28 }}>{bookings.filter(b => b.booking_date === viewDate).length}</h2>
+                  <p style={{ fontSize: 11, color: THEME.textLight }}>atendimentos</p>
+                </div>
+                <div style={{ background: '#fff', padding: 25, borderRadius: 15 }}>
+                  <p style={{ fontSize: 12, color: THEME.textLight }}>Pendentes</p>
+                  <h2 style={{ fontSize: 28 }}>{bookings.filter(b => b.status === 'scheduled').length}</h2>
+                </div>
+                <div style={{ background: '#fff', padding: 25, borderRadius: 15 }}>
+                  <p style={{ fontSize: 12, color: THEME.textLight }}>Receitas</p>
+                  <h2 style={{ fontSize: 28 }}>R$ {bookings.filter(b => b.status === 'completed').reduce((acc, b) => acc + Number(b.price_charged), 0)}</h2>
+                </div>
+              </div>
+
+              {/* TABLE PENDENCIAS */}
+              <div style={{ background: '#fff', padding: 30, borderRadius: 15 }}>
+                <h3 style={{ marginBottom: 20 }}>Pendências</h3>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ textAlign: 'left', borderBottom: `1px solid ${THEME.border}`, color: THEME.textLight, fontSize: 13 }}>
+                      <th style={{ padding: '10px 0' }}>Horário</th>
+                      <th>Serviço</th>
+                      <th>Profissional</th>
+                      <th>Cliente</th>
+                      <th>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bookings.filter(b => b.status === 'scheduled').map(b => (
+                      <tr key={b.id} style={{ borderBottom: `1px solid ${THEME.border}`, fontSize: 14 }}>
+                        <td style={{ padding: '15px 0' }}>{b.start_time.slice(0, 5)}</td>
+                        <td>{b.service_name}</td>
+                        <td>{b.professional_name}</td>
+                        <td>{b.client_name}</td>
+                        <td>
+                          <button onClick={() => handleConfirm(b)} style={{ padding: '6px 15px', borderRadius: 6, border: 'none', background: '#EFEFEF', cursor: 'pointer', fontSize: 12 }}>Confirmar</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* RIGHT COLUMN */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 25 }}>
+              <div style={{ background: '#fff', padding: 25, borderRadius: 15 }}>
+                <h3 style={{ fontSize: 14, marginBottom: 15 }}>Calendário</h3>
+                <input type="date" value={viewDate} onChange={e => setViewDate(e.target.value)} style={{ width: '100%', border: 'none', background: '#F9F9F9', padding: 10, borderRadius: 8 }} />
+              </div>
+              <div style={{ background: '#fff', padding: 25, borderRadius: 15 }}>
+                <h3 style={{ fontSize: 14, marginBottom: 20 }}>Rendimento</h3>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 100 }}>
+                  {[40, 60, 30, 80, 50, 90, 70].map((h, i) => (
+                    <div key={i} style={{ flex: 1, background: i === 5 ? '#000' : '#DDD', height: `${h}%`, borderRadius: '4px 4px 0 0' }}></div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, marginTop: 10, color: THEME.textLight }}>
+                   <span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span><span>D</span>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
+        {/* VIEW AGENDA (TRADICIONAL GRADE) */}
         {tab === 'agenda' && (
-          <div style={{ display: 'flex', gap: 24, overflowX: 'auto' }}>
-            {(role === 'admin' ? profs : [me]).map(p => (
-              <div key={p.id} style={{ minWidth: 280 }}>
-                <h4 style={{ marginBottom: 20, fontSize: 14 }}>{p.full_name} <span style={{ color: THEME.gold, fontSize: 10 }}>• {p.tipo}</span></h4>
-                <div style={{ background: '#FFF', borderRadius: 12, border: '1px solid #EAE8E4' }}>
+          <div style={{ background: '#fff', padding: 30, borderRadius: 15, overflowX: 'auto' }}>
+            <div style={{ display: 'flex', gap: 20 }}>
+              {(role === 'admin' ? profs : [me]).map(p => (
+                <div key={p.id} style={{ flex: 1, minWidth: 200 }}>
+                  <h4 style={{ textAlign: 'center', marginBottom: 20 }}>{p.full_name}</h4>
                   {HORARIOS.map(h => {
-                    const b = isOccupied(p.full_name, viewDate, h);
-                    const isStart = b && b.start_time.slice(0, 5) === h;
-                    const past = isPast(viewDate, h);
+                    const ocupado = checkOccupied(p.full_name, viewDate, h)
+                    const isPastSlot = isPast(viewDate, h)
                     return (
-                      <div key={h} 
+                      <div key={h}
                         onClick={() => {
-                          if (past || (b && b.status === 'completed')) return;
-                          if (!b) { setForm({ profId: p.full_name, time: h }); setModalType('booking'); setShowModal(true); }
-                          else if (isStart) { setForm({...b, time: b.start_time.slice(0,5)}); setModalType('edit'); setShowModal(true); }
+                          if (ocupado || isPastSlot) return
+                          setForm({ profId: p.full_name, time: h })
+                          setShowModal(true)
                         }}
-                        style={{ padding: '14px 16px', borderBottom: '1px solid #F9F7F2', display: 'flex', alignItems: 'center', gap: 12, 
-                                 background: b ? THEME.busy : 'transparent', cursor: past ? 'default' : 'pointer', opacity: past ? 0.4 : 1 }}>
-                        <span style={{ fontSize: 10, color: '#CCC', width: 35 }}>{h}</span>
-                        <div style={{ flex: 1 }}>
-                          {isStart ? <div style={{ fontSize: 11, fontWeight: 600 }}>{b.client_name}</div> : b ? null : <span style={{ fontSize: 10, color: '#EEE' }}>—</span>}
-                        </div>
+                        style={{
+                          padding: '12px', borderBottom: `1px solid ${THEME.border}`, fontSize: 12,
+                          display: 'flex', justifyContent: 'space-between',
+                          background: ocupado ? '#F9F9F9' : '#FFF',
+                          cursor: (ocupado || isPastSlot) ? 'default' : 'pointer',
+                          color: isPastSlot ? '#ccc' : '#000'
+                        }}>
+                        <span>{h}</span>
+                        {ocupado ? <span style={{ fontWeight: 700 }}>{ocupado.client_name}</span> : <span style={{ color: '#EEE' }}>Livre</span>}
                       </div>
                     )
                   })}
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* MODAL - AURA STYLE */}
-        {showModal && (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,26,26,0.4)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-            <div style={{ background: '#FFF', width: 440, borderRadius: 16, padding: 40 }}>
-              <h2 style={{ fontFamily: '"Playfair Display", serif', fontSize: 24, marginBottom: 30 }}>{modalType === 'edit' ? 'Appointment Details' : 'Book Appointment'}</h2>
-              
-              <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, color: THEME.gold, display: 'block', marginBottom: 8 }}>CLIENT NAME</label>
-              <input value={form.client_name} onChange={e => setForm({...form, client_name: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 8, border: '1px solid #EAE8E4', marginBottom: 20 }} />
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-                <div>
-                  <label style={{ fontSize: 10, fontWeight: 700, color: THEME.gold, display: 'block', marginBottom: 8 }}>PROFESSIONAL</label>
-                  <select disabled={role !== 'admin'} value={form.profId || form.professional_name} onChange={e => setForm({...form, profId: e.target.value, professional_name: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 8, border: '1px solid #EAE8E4' }}>
-                    {profs.map(p => <option key={p.id} value={p.full_name}>{p.full_name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ fontSize: 10, fontWeight: 700, color: THEME.gold, display: 'block', marginBottom: 8 }}>TIME</label>
-                  <select value={form.time} onChange={e => setForm({...form, time: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 8, border: '1px solid #EAE8E4' }}>
-                    {HORARIOS.map(h => <option key={h} value={h}>{h}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <label style={{ fontSize: 10, fontWeight: 700, color: THEME.gold, display: 'block', marginBottom: 8 }}>SERVICE</label>
-              <select value={form.service_name} onChange={e => setForm({...form, service_name: e.target.value})} style={{ width: '100%', padding: 12, borderRadius: 8, border: '1px solid #EAE8E4', marginBottom: 30 }}>
-                <option value="">Select Service...</option>
-                {services.filter(s => s.tipo === profs.find(p => p.full_name === (form.profId || form.professional_name))?.tipo).map(s => <option key={s.id} value={s.name}>{s.name} (R$ {s.price})</option>)}
-              </select>
-
-              <div style={{ display: 'flex', gap: 12 }}>
-                <GoldButton onClick={handleAction} style={{ flex: 1 }}>{form.id ? 'Save Changes' : 'Confirm'}</GoldButton>
-                {form.id && <GoldButton variant="outline" onClick={async () => {
-                  const val = Number(form.price_charged || services.find(s=>s.name===form.service_name).price);
-                  await supabase.from('salon_bookings').update({ status: 'completed', price_charged: val, commission_value: (val * (form.commission_pct/100)).toFixed(2) }).eq('id', form.id);
-                  setShowModal(false); loadData();
-                }} style={{ flex: 1 }}>Checkout</GoldButton>}
-              </div>
-              <button onClick={() => setShowModal(false)} style={{ width: '100%', marginTop: 20, background: 'none', border: 'none', color: '#CCC', fontSize: 11, cursor: 'pointer' }}>Close</button>
+              ))}
             </div>
           </div>
         )}
       </main>
+
+      {/* MODAL AGENDAMENTO / EDIÇÃO */}
+      {showModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+          <div style={{ background: '#fff', padding: 40, borderRadius: 20, width: 400 }}>
+            <h3 style={{ marginBottom: 20 }}>{form.id ? 'Editar Agendamento' : 'Novo Agendamento'}</h3>
+            
+            <label style={{ fontSize: 11, color: THEME.textLight }}>CLIENTE</label>
+            <input value={form.client_name} onChange={e => setForm({ ...form, client_name: e.target.value })} style={{ width: '100%', padding: 12, marginBottom: 15, borderRadius: 8, border: '1px solid #ddd' }} />
+
+            <label style={{ fontSize: 11, color: THEME.textLight }}>SERVIÇO</label>
+            <select value={form.service_name} onChange={e => setForm({ ...form, service_name: e.target.value })} style={{ width: '100%', padding: 12, marginBottom: 15, borderRadius: 8, border: '1px solid #ddd' }}>
+              <option value="">Selecione o serviço</option>
+              {services.filter(s => {
+                  const prof = profs.find(p => p.full_name === (form.profId || form.professional_name))
+                  return prof ? s.tipo === prof.tipo : true
+              }).map(s => <option key={s.id} value={s.name}>{s.name} (R$ {s.price})</option>)}
+            </select>
+
+            <label style={{ fontSize: 11, color: THEME.textLight }}>PROFISSIONAL</label>
+            <select disabled={role !== 'admin'} value={form.profId || form.professional_name} onChange={e => setForm({ ...form, profId: e.target.value, professional_name: e.target.value })} style={{ width: '100%', padding: 12, marginBottom: 20, borderRadius: 8, border: '1px solid #ddd' }}>
+              {profs.map(p => <option key={p.id} value={p.full_name}>{p.full_name}</option>)}
+            </select>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={handleSave} style={{ flex: 1, padding: 12, background: '#000', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>Salvar</button>
+              <button onClick={() => setShowModal(false)} style={{ flex: 1, padding: 12, background: '#eee', border: 'none', borderRadius: 8, cursor: 'pointer' }}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
-  );
+  )
 }
