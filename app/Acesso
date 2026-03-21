@@ -319,6 +319,8 @@ function Admin({onLogout}){
 
   // compatible services
   const srvsFor=nom=>{const p=profs.find(x=>x.full_name===nom);if(!p||!p.tipo)return[];return srvs.filter(s=>s.tipo===p.tipo)}
+  // extrai nome limpo sem duração do texto do option
+  const cleanSrvName=v=>v.replace(/\s*\(\d+min\)\s*$/,'').trim()
 
   // free slots respecting duration
   const freeSlotsFor=(nom,dmy)=>{
@@ -932,7 +934,7 @@ function Admin({onLogout}){
           {!profs.find(x=>x.full_name===form.professional_name)?.tipo&&<Alert type="danger" c="⚠️ Profissional sem classe — edite o cadastro antes de agendar."/>}
           <Lbl c="Cliente *"/><Sel v={form.client_name} set={F('client_name')}><option value="">Selecionar cliente…</option>{clients.map(c=><option key={c.id}>{c.full_name}</option>)}</Sel>
           <Lbl c={`Serviço * — ${profs.find(x=>x.full_name===form.professional_name)?.tipo==='manicure'?'💅 Manicure apenas':'✂️ Cabelereiro apenas'}`}/>
-          <Sel v={form.service_name} set={F('service_name')}><option value="">Selecionar serviço…</option>{srvsFor(form.professional_name).map(s=><option key={s.id}>{s.name} ({s.duration_min}min)</option>)}</Sel>
+          <Sel v={form.service_name} set={v=>setForm(f=>({...f,service_name:cleanSrvName(v)}))}><option value="">Selecionar serviço…</option>{srvsFor(form.professional_name).map(s=><option key={s.id}>{s.name} ({s.duration_min}min)</option>)}</Sel>
           {ferr&&<Alert type="danger" c={ferr}/>}
           <div style={{display:'flex',gap:10,marginTop:20}}>
             <button className="btn btn-primary" style={{flex:1}} onClick={saveAg}>Salvar</button>
@@ -947,7 +949,7 @@ function Admin({onLogout}){
           <Lbl c="Cliente *"/><Sel v={form.client_name} set={F('client_name')}><option value="">Selecionar…</option>{clients.map(c=><option key={c.id}>{c.full_name}</option>)}</Sel>
           <Lbl c="Profissional *"/><Sel v={form.professional_name} set={v=>{setForm(f=>({...f,professional_name:v,service_name:'',time:''}));setFerr('')}}><option value="">Selecionar…</option>{profs.map(p=><option key={p.id}>{p.full_name}</option>)}</Sel>
           <Lbl c={`Serviço *${form.professional_name?' — '+srvsFor(form.professional_name).length+' compatíveis':''}`}/>
-          <Sel v={form.service_name} set={v=>{setForm(f=>({...f,service_name:v,time:''}));setFerr('')}}><option value="">Selecionar…</option>{srvsFor(form.professional_name).map(s=><option key={s.id}>{s.name} ({s.duration_min}min)</option>)}</Sel>
+          <Sel v={form.service_name} set={v=>{setForm(f=>({...f,service_name:cleanSrvName(v),time:''}));setFerr('')}}><option value="">Selecionar…</option>{srvsFor(form.professional_name).map(s=><option key={s.id}>{s.name} ({s.duration_min}min)</option>)}</Sel>
           <Lbl c="Data *"/><input type="date" value={dmyToISO(form.dmy)||''} onChange={e=>setForm(f=>({...f,dmy:isoToDmy(e.target.value),time:''}))} className="inp"/>
           <Lbl c="Horário *"/><Sel v={form.time} set={F('time')}><option value="">Selecionar…</option>{freeSlotsFor(form.professional_name,form.dmy).map(h=><option key={h}>{h}</option>)}</Sel>
           {ferr&&<Alert type="danger" c={ferr}/>}
