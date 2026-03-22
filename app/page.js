@@ -876,6 +876,10 @@ function Admin({onLogout}){
                     </div>
                     <div style={{display:'flex',flexDirection:'column',gap:6}}>
                       <button className="btn btn-ghost btn-sm" style={{width:'100%',justifyContent:'center'}} onClick={()=>openM('prof',{...p,tipo:p.tipo||''})}>Editar</button>
+                      <button className="btn btn-sm" style={{width:'100%',justifyContent:'center',background:T.amberPale,color:T.amber,border:'none',borderRadius:7,fontFamily:'Manrope',fontSize:11,fontWeight:600,cursor:'pointer'}}
+                        onClick={()=>{if(window.confirm(`Resetar senha de ${p.full_name} para 123456?`))supabase.from('salon_professionals').update({senha:'123456'}).eq('id',p.id).then(()=>toast2(`Senha de ${p.full_name} resetada!`))}}>
+                        🔑 Resetar Senha
+                      </button>
                       <button className="btn btn-danger btn-sm" style={{width:'100%',justifyContent:'center'}} onClick={()=>{if(window.confirm('Remover?'))supabase.from('salon_professionals').update({active:false}).eq('id',p.id).then(()=>{toast2('Removido!');load()})}}>Remover</button>
                     </div>
                   </div>
@@ -1155,7 +1159,7 @@ function ProfPanel({prof,onLogout}){
   const load=useCallback(async()=>{
     setLd(true)
     const[r1,r2]=await Promise.all([
-      supabase.from('salon_bookings').select('*').eq('professional_name',prof.full_name).order('booking_date').order('start_time'),
+      supabase.from('salon_bookings').select('*,created_at').eq('professional_name',prof.full_name).order('booking_date').order('start_time'),
       supabase.from('salon_blocks').select('*').eq('professional_name',prof.full_name).order('block_date').order('start_time'),
     ])
     setAgs(r1.data||[]);setBlocks(r2.data||[])
@@ -1201,7 +1205,84 @@ function ProfPanel({prof,onLogout}){
     closeM();toast2('Bloqueio salvo!');load()
   }
 
-  const tabs2=[{id:'hoje',label:'Hoje',ic:'📅'},{id:'proximos',label:'Próximos',ic:'🗓'},{id:'rendimentos',label:'Rendimentos',ic:'◎'},{id:'bloqueios',label:'Bloqueios',ic:'🚫'}]
+  const tabs2=[{id:'hoje',label:'Hoje',ic:'📅'},{id:'proximos',label:'Próximos',ic:'🗓'},{id:'agendar',label:'Agendar',ic:'➕'},{id:'notificacoes',label:'Notificações',ic:'🔔'},{id:'rendimentos',label:'Rendimentos',ic:'◎'},{id:'bloqueios',label:'Bloqueios',ic:'🚫'},{id:'senha',label:'Minha Senha',ic:'🔑'}]
+
+  // ── AGENDAR (profissional agenda para si mesmo) ──────
+  const [agSrvs,setAgSrvs]=useState([])
+  const [agClients,setAgClients]=useState([])
+  const [agForm,setAgForm]=useState({client_name:'',service_name:'',dmy:todayStr(),time:''})
+  const [agErr,setAgErr]=useState('')
+
+  useEffect(()=>{
+    supabase.from('services').select('*').eq('active',true).eq('tipo',prof.tipo||'cabelereiro').then(({data})=>setAgSrvs(data||[]))
+    supabase.from('salon_clients').select('*').order('full_name').then(({data})=>setAgClients(data||[]))
+  },[prof.tipo])
+
+  const AF=k=>v=>setAgForm(f=>({...f,[k]:v}))
+
+  function freeSlotsProf(dmy){
+    if(!dmy)return SLOTS
+    const hi=(prof.schedule_start||'08:00').slice(0,5)
+    const hf=(prof.schedule_end||'18:00').slice(0,5)
+    const taken=rows.filter(a=>a.dmy===dmy&&a.status!=='cancelled')
+      .map(a=>{const s=agSrvs.find(x=>x.name===a.srvName);const dur=Number(a.durMin)||Number(s?.duration_min)||30;return{ini:toMin(a.time),fim:toMin(a.time)+dur}})
+    const srvNow=agSrvs.find(x=>x.name===agForm.service_name)
+    const durNow=Number(srvNow?.duration_min)||30
+    return SLOTS.filter(h=>{
+      if(h<hi||h>hf)return false
+      if(!isFuture(dmy,h))return false
+      const ini=toMin(h),fim=ini+durNow
+      if(taken.some(t=>ini<t.fim&&fim>t.ini))return false
+      return true
+    })
+  }
+
+  async function saveAgProf(){
+    setAgErr('')
+    if(!agForm.client_name||!agForm.service_name||!agForm.dmy||!agForm.time){setAgErr('Preencha todos os campos');return}
+    const s=agSrvs.find(x=>x.name===agForm.service_name)
+    const{error}=await supabase.from('salon_bookings').insert({
+      client_name:agForm.client_name,
+      service_name:agForm.service_name,
+      professional_name:prof.full_name,
+      booking_date:dmyToISO(agForm.dmy),
+      start_time:agForm.time+':00',
+      status:'scheduled',
+      price_charged:s?.price||0,
+      service_price:s?.price||0,
+      duration_min:s?.duration_min||30,
+    })
+    if(error){setAgErr('Erro: '+error.message);return}
+    shToast('Agendamento criado!');setAgForm({client_name:'',service_name:'',dmy:todayStr(),time:''});load()
+  }
+
+  // ── ALTERAR SENHA ────────────────────────────────────
+  const [senhaAtual,setSenhaAtual]=useState('')
+  const [senhaNova,setSenhaNova]=useState('')
+  const [senhaConf,setSenhaConf]=useState('')
+  const [senhaErr,setSenhaErr]=useState('')
+  const [senhaOk,setSenhaOk]=useState('')
+
+  async function alterarSenha(){
+    setSenhaErr('');setSenhaOk('')
+    if(!senhaAtual){setSenhaErr('Informe a senha atual');return}
+    if(senhaAtual!==(prof.senha||'123456')){setSenhaErr('Senha atual incorreta');return}
+    if(!senhaNova||senhaNova.length<4){setSenhaErr('Nova senha deve ter pelo menos 4 caracteres');return}
+    if(senhaNova!==senhaConf){setSenhaErr('As senhas não coincidem');return}
+    const{error}=await supabase.from('salon_professionals').update({senha:senhaNova}).eq('id',prof.id)
+    if(error){setSenhaErr('Erro: '+error.message);return}
+    prof.senha=senhaNova
+    setSenhaOk('✅ Senha alterada com sucesso!')
+    setSenhaAtual('');setSenhaNova('');setSenhaConf('')
+  }
+
+  // ── NOTIFICAÇÕES ─────────────────────────────────────
+  // Busca agendamentos recentes (últimas 48h criados/cancelados)
+  const notifs=ags.filter(a=>{
+    const created=new Date(a.created_at||0)
+    const diff=(Date.now()-created.getTime())/(1000*60*60)
+    return diff<=48
+  }).sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0))
 
   return(
     <>
@@ -1304,6 +1385,74 @@ function ProfPanel({prof,onLogout}){
                 ))}
               </>)}
 
+              {tab==='agendar'&&(<>
+                <div style={{marginBottom:16}}>
+                  <div style={{fontFamily:'Noto Serif,serif',fontSize:17,fontWeight:600,marginBottom:4}}>Novo Agendamento</div>
+                  <div style={{fontSize:12,color:T.onSurfaceLow}}>Agende um serviço em sua própria agenda</div>
+                </div>
+                <Lbl c="Cliente *"/>
+                <Sel v={agForm.client_name} set={AF('client_name')}>
+                  <option value="">Selecionar cliente…</option>
+                  {agClients.map(c=><option key={c.id} value={c.full_name}>{c.full_name}</option>)}
+                </Sel>
+                <Lbl c="Serviço *"/>
+                <Sel v={agForm.service_name} set={v=>setAgForm(f=>({...f,service_name:v,time:''}))} >
+                  <option value="">Selecionar serviço…</option>
+                  {agSrvs.map(s=><option key={s.id} value={s.name}>{s.name} ({s.duration_min}min) — R$ {s.price}</option>)}
+                </Sel>
+                <Lbl c="Data *"/>
+                <input type="date" value={dmyToISO(agForm.dmy)||''} onChange={e=>setAgForm(f=>({...f,dmy:isoToDmy(e.target.value),time:''}))} className="inp"/>
+                <Lbl c="Horário *"/>
+                <Sel v={agForm.time} set={AF('time')}>
+                  <option value="">Selecionar…</option>
+                  {freeSlotsProf(agForm.dmy).map(h=><option key={h} value={h}>{h}</option>)}
+                </Sel>
+                {agErr&&<Alert type="danger" c={agErr}/>}
+                <button className="btn btn-primary" style={{width:'100%',marginTop:20,justifyContent:'center'}} onClick={saveAgProf}>
+                  Confirmar Agendamento
+                </button>
+              </>)}
+
+              {tab==='notificacoes'&&(<>
+                <div style={{marginBottom:16}}>
+                  <div style={{fontFamily:'Noto Serif,serif',fontSize:17,fontWeight:600,marginBottom:4}}>Notificações</div>
+                  <div style={{fontSize:12,color:T.onSurfaceLow}}>Agendamentos das últimas 48 horas</div>
+                </div>
+                {notifs.length===0
+                  ? <div style={{textAlign:'center',padding:'28px',color:T.onSurfaceLow,fontSize:13}}>Nenhuma notificação recente 🔔</div>
+                  : notifs.map(a=>{
+                      const isoDate=isoToDmy(a.booking_date)
+                      const time=(a.start_time||'').slice(0,5)
+                      const cancelled=a.status==='cancelled'
+                      const cli=agClients.find(c=>c.full_name===a.client_name)
+                      return(
+                        <div key={a.id} style={{
+                          padding:'14px 16px',borderRadius:14,marginBottom:10,
+                          background:cancelled?T.dangerPale:T.successPale,
+                          border:`1px solid ${cancelled?T.danger+'22':T.success+'22'}`
+                        }}>
+                          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+                            <span style={{fontSize:16}}>{cancelled?'❌':'✅'}</span>
+                            <span style={{fontSize:12,fontWeight:700,color:cancelled?T.danger:T.success}}>
+                              {cancelled?'Agendamento Cancelado':'Novo Agendamento'}
+                            </span>
+                            <span style={{fontSize:10,color:T.onSurfaceLow,marginLeft:'auto'}}>
+                              {isoDate} às {time}
+                            </span>
+                          </div>
+                          <div style={{fontSize:14,fontWeight:600,color:T.onSurface}}>{a.client_name}</div>
+                          <div style={{fontSize:12,color:T.onSurfaceMed,marginTop:2}}>{a.service_name}</div>
+                          {cli?.phone&&(
+                            <div style={{fontSize:12,color:T.primary,marginTop:6,fontWeight:600}}>
+                              📱 {cli.phone}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })
+                }
+              </>)}
+
               {tab==='bloqueios'&&(<>
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14,flexWrap:'wrap',gap:8}}>
                   <span style={{fontSize:13,color:T.onSurfaceLow}}>Indisponibilidades na agenda</span>
@@ -1327,6 +1476,28 @@ function ProfPanel({prof,onLogout}){
                   </div>
                 ))}
               </>)}
+
+              {tab==='senha'&&(<>
+                <div style={{marginBottom:20}}>
+                  <div style={{fontFamily:'Noto Serif,serif',fontSize:17,fontWeight:600,marginBottom:4}}>Alterar Senha</div>
+                  <div style={{fontSize:12,color:T.onSurfaceLow}}>Altere sua senha de acesso ao sistema</div>
+                </div>
+                <Lbl c="Senha atual *"/>
+                <input type="password" value={senhaAtual} onChange={e=>{setSenhaAtual(e.target.value);setSenhaErr('');setSenhaOk('')}} placeholder="Senha atual" className="inp"/>
+                <Lbl c="Nova senha *"/>
+                <input type="password" value={senhaNova} onChange={e=>{setSenhaNova(e.target.value);setSenhaErr('');setSenhaOk('')}} placeholder="Mínimo 4 caracteres" className="inp"/>
+                <Lbl c="Confirmar nova senha *"/>
+                <input type="password" value={senhaConf} onChange={e=>{setSenhaConf(e.target.value);setSenhaErr('');setSenhaOk('')}} placeholder="Repita a nova senha" className="inp"/>
+                {senhaErr&&<Alert type="danger" c={senhaErr}/>}
+                {senhaOk&&<Alert type="success" c={senhaOk}/>}
+                <button className="btn btn-primary" style={{width:'100%',marginTop:20,justifyContent:'center'}} onClick={alterarSenha}>
+                  Salvar Nova Senha
+                </button>
+                <div style={{marginTop:12,fontSize:11,color:T.onSurfaceLow,textAlign:'center'}}>
+                  Senha padrão inicial: 123456
+                </div>
+              </>)}
+
             </>)}
           </div>
         </div>
