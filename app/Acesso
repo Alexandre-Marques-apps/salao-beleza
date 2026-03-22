@@ -217,11 +217,10 @@ const Lbl = ({c})=><label className="lbl">{c}</label>
 const Inp = ({v,set,type='text',ph,dis})=><input type={type} value={v??''} onChange={e=>set&&set(e.target.value)} placeholder={ph} disabled={dis} className="inp"/>
 const Sel = ({v,set,children})=><select value={v??''} onChange={e=>set&&set(e.target.value)} className="sel">{children}</select>
 const Alert = ({type,c})=><div className={`alert alert-${type}`}>{c}</div>
-const Badge = ({tipo})=>{
-  if(tipo==='manicure') return <span className="bdg bdg-nail">💅 Manicure</span>
-  if(tipo==='sobrancelha') return <span className="bdg" style={{background:'#fce4ec',color:'#ad1457'}}>🪡 Sobrancelha</span>
-  return <span className="bdg bdg-hair">✂️ Cabelereiro</span>
-}
+const Badge = ({tipo})=>
+  tipo==='manicure'?<span className="bdg bdg-nail">💅 Manicure</span>:
+  tipo==='sobrancelha'?<span className="bdg" style={{background:'#f8e8f0',color:'#880e4f'}}>🪡 Sobrancelha</span>:
+  <span className="bdg bdg-hair">✂️ Cabelereiro</span>
 
 // ══════════════════════════════════════════════════════
 // LOGIN
@@ -236,7 +235,9 @@ function Login({onAdmin,onProf}){
     if(!u.trim()){setErr('Informe seu nome');return}
     if(!p){setErr('Informe sua senha');return}
     setLd(true);setErr('')
-    if(u.trim()===ADMIN&&p===ADMIN_PASS){setLd(false);onAdmin();return}
+    // verifica senha do admin (localStorage tem prioridade sobre padrão)
+    const adminSenha=typeof window!=='undefined'?(localStorage.getItem('admin_senha')||ADMIN_PASS):ADMIN_PASS
+    if(u.trim()===ADMIN&&p===adminSenha){setLd(false);onAdmin();return}
     const{data,error}=await supabase.from('salon_professionals').select('*').ilike('full_name',u.trim()).eq('active',true).single()
     setLd(false)
     if(error||!data){setErr('Usuário não encontrado');return}
@@ -564,11 +565,12 @@ function Admin({onLogout}){
 
   const navItems=[
     {id:'dashboard',label:'Dashboard',icon:'⬡'},
-    {id:'agenda',label:'Global Schedule',icon:'◷'},
-    {id:'clientes',label:'Client Registration',icon:'◉'},
-    {id:'profissionais',label:'Professional Registration',icon:'✦'},
-    {id:'servicos',label:'Service Registration',icon:'◈'},
-    {id:'financeiro',label:'Billing / Revenue',icon:'◎'},
+    {id:'agenda',label:'Agenda',icon:'◷'},
+    {id:'clientes',label:'Clientes',icon:'◉'},
+    {id:'profissionais',label:'Profissionais',icon:'✦'},
+    {id:'servicos',label:'Serviços',icon:'◈'},
+    {id:'financeiro',label:'Financeiro',icon:'◎'},
+    {id:'minha_senha',label:'Minha Senha',icon:'🔑'},
   ]
 
   return(
@@ -597,7 +599,7 @@ function Admin({onLogout}){
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
             <div>
               <div className="sb-title">Joudat</div>
-              <div className="sb-sub">The Digital Atelier</div>
+              <div className="sb-sub">Painel de Gestão</div>
             </div>
             <button onClick={()=>setSb(false)} style={{background:'none',border:'none',cursor:'pointer',color:T.onSurfaceLow,fontSize:18,padding:4}}>×</button>
           </div>
@@ -648,7 +650,7 @@ function Admin({onLogout}){
             {/* Headline */}
             <div className="au" style={{marginBottom:28}}>
               <div style={{fontSize:10,fontWeight:700,letterSpacing:4,textTransform:'uppercase',color:T.onSurfaceLow,marginBottom:6}}>Visão Geral</div>
-              <div style={{fontFamily:'Noto Serif,serif',fontSize:32,fontWeight:700,color:T.onSurface,lineHeight:1.15}}>Atelier Dashboard</div>
+              <div style={{fontFamily:'Noto Serif,serif',fontSize:32,fontWeight:700,color:T.onSurface,lineHeight:1.15}}>Painel de Controle</div>
               <div style={{fontSize:13,color:T.onSurfaceLow,marginTop:6}}>{new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
             </div>
 
@@ -772,7 +774,7 @@ function Admin({onLogout}){
             <div className="card au">
               <div className="card-hd">
                 <div style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
-                  <span className="ch">Master Schedule</span>
+                  <span className="ch">Grade de Horários</span>
                   <input type="date" value={dmyToISO(agDate)} onChange={e=>setAgDate(isoToDmy(e.target.value))}
                     style={{padding:'8px 12px',background:T.surfaceLow,border:'none',borderRadius:9,fontFamily:'Manrope',fontSize:12,color:T.onSurface,outline:'none'}}/>
                 </div>
@@ -1029,6 +1031,16 @@ function Admin({onLogout}){
                     })}</tbody>
                   </table>
                 </div>
+              </div>
+            </div>
+          </div>)}
+
+          {tab==='minha_senha'&&(<div className="au">
+            <div className="card">
+              <div className="card-hd"><span className="ch">Alterar Senha do Administrador</span></div>
+              <div style={{padding:20,maxWidth:420}}>
+                <div style={{fontSize:13,color:T.onSurfaceLow,marginBottom:16}}>Altere a senha de acesso ao painel administrativo.</div>
+                <AdminSenhaComp toast2={toast2}/>
               </div>
             </div>
           </div>)}
@@ -1620,7 +1632,49 @@ function ProfPanel({prof,onLogout}){
 }
 
 // ══════════════════════════════════════════════════════
-// ROOT
+// COMPONENTE ALTERAR SENHA ADMIN
+// ══════════════════════════════════════════════════════
+function AdminSenhaComp({toast2}){
+  const [senhaAtual,setSenhaAtual]=useState('')
+  const [senhaNova,setSenhaNova]=useState('')
+  const [senhaConf,setSenhaConf]=useState('')
+  const [err,setErr]=useState('')
+  const [ok,setOk]=useState('')
+
+  // Senha do admin fica numa variável de ambiente ou armazenada localmente
+  // Como não temos tabela de admin, usamos localStorage para persistir
+  async function salvar(){
+    setErr('');setOk('')
+    const senhaAtualSalva=localStorage.getItem('admin_senha')||'123456'
+    if(senhaAtual!==senhaAtualSalva){setErr('Senha atual incorreta');return}
+    if(!senhaNova||senhaNova.length<4){setErr('Nova senha deve ter pelo menos 4 caracteres');return}
+    if(senhaNova!==senhaConf){setErr('As senhas não coincidem');return}
+    localStorage.setItem('admin_senha',senhaNova)
+    setOk('✅ Senha alterada com sucesso!')
+    setSenhaAtual('');setSenhaNova('');setSenhaConf('')
+    toast2('Senha do administrador alterada!')
+  }
+
+  return(
+    <>
+      <label className="lbl">Senha atual *</label>
+      <input type="password" value={senhaAtual} onChange={e=>{setSenhaAtual(e.target.value);setErr('');setOk('')}} placeholder="Senha atual" className="inp"/>
+      <label className="lbl">Nova senha *</label>
+      <input type="password" value={senhaNova} onChange={e=>{setSenhaNova(e.target.value);setErr('');setOk('')}} placeholder="Mínimo 4 caracteres" className="inp"/>
+      <label className="lbl">Confirmar nova senha *</label>
+      <input type="password" value={senhaConf} onChange={e=>{setSenhaConf(e.target.value);setErr('');setOk('')}} onKeyDown={e=>e.key==='Enter'&&salvar()} placeholder="Repita a nova senha" className="inp"/>
+      {err&&<div className="alert alert-danger" style={{marginTop:10}}>{err}</div>}
+      {ok&&<div className="alert alert-success" style={{marginTop:10}}>{ok}</div>}
+      <button className="btn btn-primary" style={{width:'100%',marginTop:20,justifyContent:'center'}} onClick={salvar}>
+        Salvar Nova Senha
+      </button>
+      <div style={{marginTop:12,fontSize:11,color:'#7a7a6a',textAlign:'center'}}>Senha padrão inicial: 123456</div>
+    </>
+  )
+}
+
+// ══════════════════════════════════════════════════════
+// ROOT — login unificado
 // ══════════════════════════════════════════════════════
 export default function Joudat(){
   const [mode,setMode]=useState(null)
