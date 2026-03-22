@@ -217,7 +217,11 @@ const Lbl = ({c})=><label className="lbl">{c}</label>
 const Inp = ({v,set,type='text',ph,dis})=><input type={type} value={v??''} onChange={e=>set&&set(e.target.value)} placeholder={ph} disabled={dis} className="inp"/>
 const Sel = ({v,set,children})=><select value={v??''} onChange={e=>set&&set(e.target.value)} className="sel">{children}</select>
 const Alert = ({type,c})=><div className={`alert alert-${type}`}>{c}</div>
-const Badge = ({tipo})=>tipo==='manicure'?<span className="bdg bdg-nail">💅 Manicure</span>:<span className="bdg bdg-hair">✂️ Cabelereiro</span>
+const Badge = ({tipo})=>{
+  if(tipo==='manicure') return <span className="bdg bdg-nail">💅 Manicure</span>
+  if(tipo==='sobrancelha') return <span className="bdg" style={{background:'#fce4ec',color:'#ad1457'}}>🪡 Sobrancelha</span>
+  return <span className="bdg bdg-hair">✂️ Cabelereiro</span>
+}
 
 // ══════════════════════════════════════════════════════
 // LOGIN
@@ -296,6 +300,7 @@ function Admin({onLogout}){
   const [profs,setProfs]=useState([])
   const [srvs,setSrvs]=useState([])
   const [cats,setCats]=useState([])
+  const [blocks,setBlocks]=useState([])
 
   const toast2=(m,ok=true)=>{setToast({m,ok});setTimeout(()=>setToast(null),3200)}
   const F=k=>v=>setForm(f=>({...f,[k]:v}))
@@ -304,14 +309,15 @@ function Admin({onLogout}){
 
   const load=useCallback(async()=>{
     setLd(true)
-    const[r1,r2,r3,r4,r5]=await Promise.all([
+    const[r1,r2,r3,r4,r5,r6]=await Promise.all([
       supabase.from('salon_bookings').select('*').order('booking_date').order('start_time'),
       supabase.from('salon_clients').select('*').order('full_name'),
       supabase.from('salon_professionals').select('*').eq('active',true).order('full_name'),
       supabase.from('services').select('*,service_categories(name)').eq('active',true).order('name'),
       supabase.from('service_categories').select('*').order('name'),
+      supabase.from('salon_blocks').select('*').order('block_date').order('start_time'),
     ])
-    setAgs(r1.data||[]);setClients(r2.data||[]);setProfs(r3.data||[]);setSrvs(r4.data||[]);setCats(r5.data||[])
+    setAgs(r1.data||[]);setClients(r2.data||[]);setProfs(r3.data||[]);setSrvs(r4.data||[]);setCats(r5.data||[]);setBlocks(r6.data||[])
     setLd(false)
   },[])
 
@@ -323,10 +329,13 @@ function Admin({onLogout}){
   const cleanSrvName=v=>v.replace(/\s*\(\d+min\)\s*$/,'').trim()
 
   // free slots respecting duration
+  // cabeleireiro: até 3 simultâneos | manicure/sobrancelha: 1
+  const MAX_SIM={cabelereiro:3,manicure:1,sobrancelha:1}
   const freeSlotsFor=(nom,dmy)=>{
     if(!nom||!dmy)return SLOTS
     const p=profs.find(x=>x.full_name===nom);if(!p)return[]
     const hi=(p.schedule_start||'08:00').slice(0,5),hf=(p.schedule_end||'18:00').slice(0,5)
+    const maxSim=MAX_SIM[p.tipo||'manicure']||1
     const taken=agRows.filter(a=>a.profName===nom&&a.dmy===dmy&&a.status!=='cancelled'&&a.id!==form.id)
       .map(a=>{const s=srvs.find(x=>x.name===a.srvName);const dur=Number(a.durMin)||Number(s?.duration_min)||30;return{ini:toMin(a.time),fim:toMin(a.time)+dur}})
     const srvNow=srvs.find(x=>x.name===form.service_name)
@@ -335,10 +344,18 @@ function Admin({onLogout}){
       if(h<hi||h>hf)return false
       if(!isFuture(dmy,h))return false
       const ini=toMin(h),fim=ini+durNow
-      if(taken.some(t=>ini<t.fim&&fim>t.ini))return false
       if(fim>toMin(hf)+1)return false
-      return true
-    })
+      const overlapping=taken.filter(t=>ini<t.fim&&fim>t.ini).length
+      if(overlapping>=maxSim)return false
+      // bloqueia se qualquer slot do serviço cair num período bloqueado
+      const dateISO=dmyToISO(dmy)
+      const bloqueado=blocks.some(b=>{
+        if(b.professional_name!==nom||b.block_date!==dateISO)return false
+        const bIni=toMin((b.start_time||'').slice(0,5))
+        const bFim=toMin((b.end_time||'').slice(0,5))
+        return ini<bFim&&fim>bIni
+      })
+      if(bloqueado)return false
   }
 
   // normalize booking rows
@@ -395,6 +412,18 @@ function Admin({onLogout}){
   }
   const isStart=(h,nom)=>agDay.some(a=>a.profName===nom&&a.time===h)
 
+  // verifica se horário está bloqueado pelo profissional
+  const isBlocked=(h,nom)=>{
+    const dateISO=dmyToISO(agDate)
+    return blocks.some(b=>{
+      if(b.professional_name!==nom)return false
+      if(b.block_date!==dateISO)return false
+      const bIni=(b.start_time||'').slice(0,5)
+      const bFim=(b.end_time||'').slice(0,5)
+      return h>=bIni&&h<bFim
+    })
+  }
+
   // ── CRUD ─────────────────────────────────────────
   async function saveAg(){
     setFerr('')
@@ -405,6 +434,21 @@ function Admin({onLogout}){
     if(!s?.tipo){setFerr('Serviço sem classe definida — edite o cadastro');return}
     if(p.tipo!==s.tipo){setFerr(`❌ ${p.full_name} (${p.tipo}) não pode realizar "${s.name}" (${s.tipo})`);return}
     const pl={client_name:form.client_name,service_name:form.service_name,professional_name:form.professional_name,booking_date:dmyToISO(form.dmy),start_time:form.time.length===5?form.time+':00':form.time,status:'scheduled',price_charged:s.price||0,service_price:s.price||0,duration_min:s.duration_min||30}
+    // Validação de conflito por tipo de profissional
+    const pSave=profs.find(x=>x.full_name===form.professional_name)
+    const isCabSave=(pSave?.tipo||'cabelereiro')==='cabelereiro'
+    if(!isCabSave){
+      // Manicure: bloqueia sobreposição de horário
+      const durSave=Number(s?.duration_min)||30
+      const takenSave=agRows.filter(a=>a.profName===form.professional_name&&a.dmy===form.dmy&&a.status!=='cancelled'&&a.id!==form.id)
+        .map(a=>{const sv=srvs.find(x=>x.name===a.srvName);const d=Number(a.durMin)||Number(sv?.duration_min)||30;return{ini:toMin(a.time),fim:toMin(a.time)+d}})
+      const iniSave=toMin(form.time),fimSave=iniSave+durSave
+      if(takenSave.some(t=>iniSave<t.fim&&fimSave>t.ini)){setFerr(`❌ ${form.professional_name} já tem agendamento neste horário`);return}
+    } else {
+      // Cabelereiro: apenas bloqueia horário exato duplicado
+      const exactSave=agRows.filter(a=>a.profName===form.professional_name&&a.dmy===form.dmy&&a.status!=='cancelled'&&a.id!==form.id).map(a=>a.time)
+      if(exactSave.includes(form.time)){setFerr(`❌ ${form.professional_name} já tem agendamento às ${form.time}`);return}
+    }
     const{error}=form.id?await supabase.from('salon_bookings').update(pl).eq('id',form.id):await supabase.from('salon_bookings').insert(pl)
     if(error){setFerr('Erro: '+error.message);return}
     closeM();toast2('Agendamento salvo!');load()
@@ -449,12 +493,23 @@ function Admin({onLogout}){
     }
     // verifica conflito de horário para o novo profissional
     const dur=Number(s?.duration_min)||30
-    const ocupados=agRows
-      .filter(a=>a.profName===form.professional_name&&a.dmy===form.dmy&&a.status!=='cancelled'&&a.id!==form.id)
-      .map(a=>{const sv=srvs.find(x=>x.name===a.srvName);const d=Number(a.durMin)||Number(sv?.duration_min)||30;return{ini:toMin(a.time),fim:toMin(a.time)+d}})
-    const ini=toMin(form.time),fim=ini+dur
-    if(ocupados.some(t=>ini<t.fim&&fim>t.ini)){
-      setFerr(`❌ ${form.professional_name} já tem agendamento neste horário`);return
+    const pNovo=profs.find(x=>x.full_name===form.professional_name)
+    const isCab=(pNovo?.tipo||'cabelereiro')==='cabelereiro'
+    if(!isCab){
+      // Manicure: verifica sobreposição completa
+      const ocupados=agRows
+        .filter(a=>a.profName===form.professional_name&&a.dmy===form.dmy&&a.status!=='cancelled'&&a.id!==form.id)
+        .map(a=>{const sv=srvs.find(x=>x.name===a.srvName);const d=Number(a.durMin)||Number(sv?.duration_min)||30;return{ini:toMin(a.time),fim:toMin(a.time)+d}})
+      const ini=toMin(form.time),fim=ini+dur
+      if(ocupados.some(t=>ini<t.fim&&fim>t.ini)){
+        setFerr(`❌ ${form.professional_name} já tem agendamento neste horário`);return
+      }
+    } else {
+      // Cabelereiro: verifica apenas horário exato
+      const exactTaken=agRows.filter(a=>a.profName===form.professional_name&&a.dmy===form.dmy&&a.status!=='cancelled'&&a.id!==form.id).map(a=>a.time)
+      if(exactTaken.includes(form.time)){
+        setFerr(`❌ ${form.professional_name} já tem agendamento às ${form.time}`);return
+      }
     }
     const{error}=await supabase.from('salon_bookings').update({
       professional_name:form.professional_name,
@@ -743,15 +798,21 @@ function Admin({onLogout}){
                         {profs.map(p=>{
                           const cel=getCel(h,p.full_name)
                           const start=isStart(h,p.full_name)
+                          const blocked=isBlocked(h,p.full_name)
                           const hi=(p.schedule_start||'08:00').slice(0,5),hf=(p.schedule_end||'18:00').slice(0,5)
                           const inExp=h>=hi&&h<=hf
                           const past=!isFuture(agDate,h)
-                          const grey=!inExp||(past&&!cel)
-                          const free=inExp&&!past&&!cel
+                          const grey=!inExp||(past&&!cel&&!blocked)
+                          const free=inExp&&!past&&!cel&&!blocked
                           const done=cel?.status==='completed'
                           const bg=done?T.successPale:T.primaryPale
                           const fc=done?T.success:T.primary
                           if(grey)return<td key={p.id} className="grey"/>
+                          if(blocked&&!cel)return(
+                            <td key={p.id} style={{background:'#f0f0f0',cursor:'default'}}>
+                              <div style={{width:'100%',height:'100%',minHeight:32,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,color:'#aaa',fontWeight:600}}>🚫</div>
+                            </td>
+                          )
                           return(
                             <td key={p.id} className={free?'free':''}
                               onClick={()=>{if(!free)return;openM('ag',{client_name:'',service_name:'',professional_name:p.full_name,dmy:agDate,time:h,profFix:true})}}>
@@ -1066,8 +1127,13 @@ function Admin({onLogout}){
             <option value="">Selecionar classe…</option>
             <option value="cabelereiro">✂️ Cabelereiro / Barbeiro</option>
             <option value="manicure">💅 Manicure / Pedicure / Estética</option>
+            <option value="sobrancelha">🪡 Designer de Sobrancelha</option>
           </Sel>
-          {form.tipo&&<Alert type="info" c={form.tipo==='manicure'?'💅 Realizará: Manicure, Pedicure, Estética':'✂️ Realizará: Corte, Barba, Coloração, Escova, Tratamentos'}/>}
+          {form.tipo&&<Alert type="info" c={
+            form.tipo==='manicure'?'💅 Realizará: Manicure, Pedicure, Estética':
+            form.tipo==='sobrancelha'?'🪡 Realizará: Design de Sobrancelha, Depilação facial':
+            '✂️ Realizará: Corte, Barba, Coloração, Escova, Tratamentos'
+          }/>}
           <Lbl c="Comissão (%)"/><Inp v={form.commission_pct} set={F('commission_pct')} type="number" ph="40"/>
           <Lbl c="Início expediente"/><Sel v={(form.schedule_start||'08:00').slice(0,5)} set={F('schedule_start')}>{SLOTS.map(h=><option key={h}>{h}</option>)}</Sel>
           <Lbl c="Fim expediente"/><Sel v={(form.schedule_end||'18:00').slice(0,5)} set={F('schedule_end')}>{SLOTS.map(h=><option key={h}>{h}</option>)}</Sel>
@@ -1085,8 +1151,12 @@ function Admin({onLogout}){
         <Modal title={form.id?'Editar Serviço':'Novo Serviço'} onClose={closeM}>
           <Lbl c="Nome *"/><Inp v={form.name} set={F('name')} ph="Ex: Corte Feminino"/>
           <Lbl c="Categoria"/><Sel v={form.categoria||''} set={v=>setForm(f=>({...f,categoria:v,category_id:cats.find(c=>c.name===v)?.id}))}><option value="">Selecionar…</option>{cats.map(c=><option key={c.id}>{c.name}</option>)}</Sel>
-          <Lbl c="Classe *"/><Sel v={form.tipo||''} set={F('tipo')}><option value="">Selecionar…</option><option value="cabelereiro">✂️ Cabelereiro / Barbeiro</option><option value="manicure">💅 Manicure / Pedicure / Estética</option></Sel>
-          {form.tipo&&<Alert type="info" c={form.tipo==='manicure'?'💅 Somente Manicure pode realizar':'✂️ Somente Cabelereiro pode realizar'}/>}
+          <Lbl c="Classe *"/><Sel v={form.tipo||''} set={F('tipo')}><option value="">Selecionar…</option><option value="cabelereiro">✂️ Cabelereiro / Barbeiro</option><option value="manicure">💅 Manicure / Pedicure / Estética</option><option value="sobrancelha">🪡 Designer de Sobrancelha</option></Sel>
+          {form.tipo&&<Alert type="info" c={
+            form.tipo==='manicure'?'💅 Somente Manicure pode realizar':
+            form.tipo==='sobrancelha'?'🪡 Somente Designer de Sobrancelha pode realizar':
+            '✂️ Somente Cabelereiro pode realizar'
+          }/>}
           <Lbl c="Preço (R$)"/><Inp v={form.price} set={F('price')} type="number" ph="0"/>
           <Lbl c="Duração (min)"/><Inp v={form.duration_min} set={F('duration_min')} type="number" ph="30"/>
           {ferr&&<Alert type="danger" c={ferr}/>}
@@ -1224,15 +1294,24 @@ function ProfPanel({prof,onLogout}){
     if(!dmy)return SLOTS
     const hi=(prof.schedule_start||'08:00').slice(0,5)
     const hf=(prof.schedule_end||'18:00').slice(0,5)
-    const taken=rows.filter(a=>a.dmy===dmy&&a.status!=='cancelled')
-      .map(a=>{const s=agSrvs.find(x=>x.name===a.srvName);const dur=Number(a.durMin)||Number(s?.duration_min)||30;return{ini:toMin(a.time),fim:toMin(a.time)+dur}})
+    const isCabelereiro=(prof.tipo||'cabelereiro')==='cabelereiro'
     const srvNow=agSrvs.find(x=>x.name===agForm.service_name)
     const durNow=Number(srvNow?.duration_min)||30
     return SLOTS.filter(h=>{
       if(h<hi||h>hf)return false
       if(!isFuture(dmy,h))return false
       const ini=toMin(h),fim=ini+durNow
-      if(taken.some(t=>ini<t.fim&&fim>t.ini))return false
+      if(fim>toMin(hf)+1)return false
+      // Manicure: bloqueia sobreposição
+      if(!isCabelereiro){
+        const taken=rows.filter(a=>a.dmy===dmy&&a.status!=='cancelled')
+          .map(a=>{const s=agSrvs.find(x=>x.name===a.srvName);const dur=Number(a.durMin)||Number(s?.duration_min)||30;return{ini:toMin(a.time),fim:toMin(a.time)+dur}})
+        if(taken.some(t=>ini<t.fim&&fim>t.ini))return false
+      }
+      // Cabelereiro: apenas bloqueia horário exato
+      if(isCabelereiro){
+        if(rows.filter(a=>a.dmy===dmy&&a.status!=='cancelled').map(a=>a.time).includes(h))return false
+      }
       return true
     })
   }
