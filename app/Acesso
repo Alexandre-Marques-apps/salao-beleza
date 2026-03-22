@@ -356,6 +356,8 @@ function Admin({onLogout}){
         return ini<bFim&&fim>bIni
       })
       if(bloqueado)return false
+      return true
+    })
   }
 
   // normalize booking rows
