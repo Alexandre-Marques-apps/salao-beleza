@@ -418,6 +418,53 @@ function Admin({onLogout}){
     toast2('Removido!');load()
   }
 
+  function editAg(a){
+    // abre modal de edição com dados do agendamento
+    openM('editAg',{
+      id:a.id,
+      client_name:a.cliName,
+      service_name:a.srvName,
+      professional_name:a.profName,
+      dmy:a.dmy,
+      time:a.time,
+      status:a.status,
+      profFix:false,
+    })
+  }
+
+  // profissionais compatíveis com um serviço (mesma classe)
+  const profsFor=srvName=>{
+    const s=srvs.find(x=>x.name===srvName)
+    if(!s||!s.tipo)return profs
+    return profs.filter(p=>p.tipo===s.tipo)
+  }
+
+  async function saveEditAg(){
+    setFerr('')
+    if(!form.professional_name||!form.dmy||!form.time){setFerr('Preencha profissional, data e horário');return}
+    const p=profs.find(x=>x.full_name===form.professional_name)
+    const s=srvs.find(x=>x.name===form.service_name)
+    if(p&&s&&p.tipo&&s.tipo&&p.tipo!==s.tipo){
+      setFerr(`❌ ${p.full_name} (${p.tipo}) não pode realizar "${s.name}" (${s.tipo})`);return
+    }
+    // verifica conflito de horário para o novo profissional
+    const dur=Number(s?.duration_min)||30
+    const ocupados=agRows
+      .filter(a=>a.profName===form.professional_name&&a.dmy===form.dmy&&a.status!=='cancelled'&&a.id!==form.id)
+      .map(a=>{const sv=srvs.find(x=>x.name===a.srvName);const d=Number(a.durMin)||Number(sv?.duration_min)||30;return{ini:toMin(a.time),fim:toMin(a.time)+d}})
+    const ini=toMin(form.time),fim=ini+dur
+    if(ocupados.some(t=>ini<t.fim&&fim>t.ini)){
+      setFerr(`❌ ${form.professional_name} já tem agendamento neste horário`);return
+    }
+    const{error}=await supabase.from('salon_bookings').update({
+      professional_name:form.professional_name,
+      booking_date:dmyToISO(form.dmy),
+      start_time:form.time.length===5?form.time+':00':form.time,
+    }).eq('id',form.id)
+    if(error){setFerr('Erro: '+error.message);return}
+    closeM();toast2('Agendamento atualizado!');load()
+  }
+
   async function closeAg(){
     if(!form.paid_val){setFerr('Informe o valor cobrado');return}
     const p=profs.find(x=>x.full_name===form.profName)
@@ -650,7 +697,12 @@ function Admin({onLogout}){
                         <div style={{fontSize:13,fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{a.cliName}</div>
                         <div style={{fontSize:11,color:T.onSurfaceLow}}>{a.srvName}</div>
                       </div>
-                      {a.status!=='completed'&&<button className="btn btn-success btn-sm" onClick={()=>openM('close',{...a,paid_val:a.price})}>✓</button>}
+                      <div style={{display:'flex',gap:6,flexShrink:0}}>
+                        {a.status!=='completed'&&a.status!=='cancelled'&&(
+                          <button className="btn btn-ghost btn-sm" style={{padding:'5px 8px'}} onClick={()=>editAg(a)}>✏️</button>
+                        )}
+                        {a.status!=='completed'&&<button className="btn btn-success btn-sm" onClick={()=>openM('close',{...a,paid_val:a.price})}>✓</button>}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -739,6 +791,9 @@ function Admin({onLogout}){
                       {a.paid>0&&<div style={{fontSize:12,fontWeight:600,color:a.status==='completed'?T.success:T.primary}}>{fmtCurrency(a.paid)}</div>}
                     </div>
                     <div style={{display:'flex',gap:6,flexShrink:0}}>
+                      {a.status!=='completed'&&a.status!=='cancelled'&&(
+                        <button className="btn btn-ghost btn-sm" style={{padding:'6px 10px'}} onClick={()=>editAg(a)}>✏️ Editar</button>
+                      )}
                       {a.status!=='completed'&&a.status!=='cancelled'&&<button className="btn btn-success btn-sm" onClick={()=>openM('close',{...a,paid_val:a.price})}>✓ Fechar</button>}
                       {a.status!=='completed'&&<button className="btn btn-danger btn-sm" onClick={()=>delAg(a.id)}>✕</button>}
                     </div>
@@ -934,7 +989,7 @@ function Admin({onLogout}){
           {!profs.find(x=>x.full_name===form.professional_name)?.tipo&&<Alert type="danger" c="⚠️ Profissional sem classe — edite o cadastro antes de agendar."/>}
           <Lbl c="Cliente *"/><Sel v={form.client_name} set={F('client_name')}><option value="">Selecionar cliente…</option>{clients.map(c=><option key={c.id}>{c.full_name}</option>)}</Sel>
           <Lbl c={`Serviço * — ${profs.find(x=>x.full_name===form.professional_name)?.tipo==='manicure'?'💅 Manicure apenas':'✂️ Cabelereiro apenas'}`}/>
-          <Sel v={form.service_name} set={v=>setForm(f=>({...f,service_name:cleanSrvName(v)}))}><option value="">Selecionar serviço…</option>{srvsFor(form.professional_name).map(s=><option key={s.id}>{s.name} ({s.duration_min}min)</option>)}</Sel>
+          <Sel v={form.service_name||''} set={F('service_name')}><option value="">Selecionar serviço…</option>{srvsFor(form.professional_name).map(s=><option key={s.id} value={s.name}>{s.name} ({s.duration_min}min)</option>)}</Sel>
           {ferr&&<Alert type="danger" c={ferr}/>}
           <div style={{display:'flex',gap:10,marginTop:20}}>
             <button className="btn btn-primary" style={{flex:1}} onClick={saveAg}>Salvar</button>
@@ -949,7 +1004,7 @@ function Admin({onLogout}){
           <Lbl c="Cliente *"/><Sel v={form.client_name} set={F('client_name')}><option value="">Selecionar…</option>{clients.map(c=><option key={c.id}>{c.full_name}</option>)}</Sel>
           <Lbl c="Profissional *"/><Sel v={form.professional_name} set={v=>{setForm(f=>({...f,professional_name:v,service_name:'',time:''}));setFerr('')}}><option value="">Selecionar…</option>{profs.map(p=><option key={p.id}>{p.full_name}</option>)}</Sel>
           <Lbl c={`Serviço *${form.professional_name?' — '+srvsFor(form.professional_name).length+' compatíveis':''}`}/>
-          <Sel v={form.service_name} set={v=>{setForm(f=>({...f,service_name:cleanSrvName(v),time:''}));setFerr('')}}><option value="">Selecionar…</option>{srvsFor(form.professional_name).map(s=><option key={s.id}>{s.name} ({s.duration_min}min)</option>)}</Sel>
+          <Sel v={form.service_name||''} set={v=>{setForm(f=>({...f,service_name:v,time:''}));setFerr('')}}><option value="">Selecionar…</option>{srvsFor(form.professional_name).map(s=><option key={s.id} value={s.name}>{s.name} ({s.duration_min}min)</option>)}</Sel>
           <Lbl c="Data *"/><input type="date" value={dmyToISO(form.dmy)||''} onChange={e=>setForm(f=>({...f,dmy:isoToDmy(e.target.value),time:''}))} className="inp"/>
           <Lbl c="Horário *"/><Sel v={form.time} set={F('time')}><option value="">Selecionar…</option>{freeSlotsFor(form.professional_name,form.dmy).map(h=><option key={h}>{h}</option>)}</Sel>
           {ferr&&<Alert type="danger" c={ferr}/>}
@@ -1033,6 +1088,42 @@ function Admin({onLogout}){
           {ferr&&<Alert type="danger" c={ferr}/>}
           <div style={{display:'flex',gap:10,marginTop:20}}>
             <button className="btn btn-primary" style={{flex:1}} onClick={saveSrv}>Salvar</button>
+            <button className="btn btn-ghost" onClick={closeM}>Cancelar</button>
+          </div>
+        </Modal>
+      )}
+
+      {/* MODAL EDITAR AGENDAMENTO */}
+      {modal==='editAg'&&(
+        <Modal title="Editar Agendamento" onClose={closeM}>
+          <div style={{background:T.surfaceLow,borderRadius:14,padding:'14px 16px',marginBottom:4}}>
+            <div style={{fontSize:11,color:T.onSurfaceLow,marginBottom:4}}>Cliente · Serviço</div>
+            <div style={{fontSize:15,fontWeight:700,color:T.onSurface}}>{form.client_name}</div>
+            <div style={{fontSize:13,color:T.onSurfaceMed}}>{form.service_name}</div>
+          </div>
+          <div className="alert alert-info" style={{marginTop:8,marginBottom:4}}>
+            ✏️ Você pode alterar o <strong>profissional</strong>, <strong>data</strong> e <strong>horário</strong>. O profissional deve ser da mesma classe do serviço.
+          </div>
+          <Lbl c="Profissional *"/>
+          <Sel v={form.professional_name||''} set={v=>{setForm(f=>({...f,professional_name:v,time:''}));setFerr('')}}>
+            <option value="">Selecionar...</option>
+            {profsFor(form.service_name).map(p=><option key={p.id} value={p.full_name}>{p.full_name} — {p.specialty}</option>)}
+          </Sel>
+          {form.professional_name&&(
+            <div style={{fontSize:11,color:T.onSurfaceLow,marginTop:6}}>
+              ✅ Profissionais listados são da mesma classe do serviço
+            </div>
+          )}
+          <Lbl c="Data *"/>
+          <input type="date" value={dmyToISO(form.dmy)||''} onChange={e=>setForm(f=>({...f,dmy:isoToDmy(e.target.value),time:''}))} className="inp"/>
+          <Lbl c="Horário *"/>
+          <Sel v={form.time||''} set={F('time')}>
+            <option value="">Selecionar...</option>
+            {freeSlotsFor(form.professional_name,form.dmy).map(h=><option key={h} value={h}>{h}</option>)}
+          </Sel>
+          {ferr&&<Alert type="danger" c={ferr}/>}
+          <div style={{display:'flex',gap:10,marginTop:20}}>
+            <button className="btn btn-primary" style={{flex:1}} onClick={saveEditAg}>Salvar Alteração</button>
             <button className="btn btn-ghost" onClick={closeM}>Cancelar</button>
           </div>
         </Modal>
