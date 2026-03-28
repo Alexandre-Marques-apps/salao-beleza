@@ -184,7 +184,7 @@ html,body{font-family:'Manrope',sans-serif;background:${T.surface};color:${T.onS
 
 /* TABS */
 .tabs{display:flex;overflow-x:auto;-webkit-overflow-scrolling:touch;gap:2px;padding:0 18px;background:${T.surface};}
-.tab{flex-shrink:0;padding:13px 16px;background:none;border:none;border-bottom:2px solid transparent;font-family:'Manrope';font-size:12px;font-weight:600;color:${T.onSurfaceLow};cursor:pointer;display:flex;align-items:center;gap:6px;transition:color .18s;margin-bottom:-1px;white-space:nowrap;}
+.tab{flex-shrink:0;padding:12px 10px;background:none;border:none;border-bottom:2px solid transparent;font-family:'Manrope';font-size:11px;font-weight:600;color:${T.onSurfaceLow};cursor:pointer;display:flex;align-items:center;gap:4px;transition:color .18s;margin-bottom:-1px;white-space:nowrap;}
 .tab.active{color:${T.primary};border-bottom-color:${T.primary};}
 .tab:hover:not(.active){color:${T.onSurfaceMed};}
 
@@ -225,7 +225,7 @@ const Badge = ({tipo})=>
 // ══════════════════════════════════════════════════════
 // LOGIN
 // ══════════════════════════════════════════════════════
-function Login({onAdmin,onProf}){
+function Login({onAdmin,onProf,onCliente}){
   const [u,setU]=useState('')
   const [p,setP]=useState('')
   const [err,setErr]=useState('')
@@ -235,14 +235,22 @@ function Login({onAdmin,onProf}){
     if(!u.trim()){setErr('Informe seu nome');return}
     if(!p){setErr('Informe sua senha');return}
     setLd(true);setErr('')
-    // verifica senha do admin (localStorage tem prioridade sobre padrão)
+    // verifica senha do admin
     const adminSenha=typeof window!=='undefined'?(localStorage.getItem('admin_senha')||ADMIN_PASS):ADMIN_PASS
     if(u.trim()===ADMIN&&p===adminSenha){setLd(false);onAdmin();return}
-    const{data,error}=await supabase.from('salon_professionals').select('*').ilike('full_name',u.trim()).eq('active',true).single()
+    // verifica profissional
+    const{data:profData,error:profErr}=await supabase.from('salon_professionals').select('*').ilike('full_name',u.trim()).eq('active',true).single()
+    if(!profErr&&profData){
+      setLd(false)
+      if(p!==(profData.senha||'123456')){setErr('Senha incorreta');return}
+      onProf(profData);return
+    }
+    // verifica cliente
+    const{data:cliData,error:cliErr}=await supabase.from('salon_clients').select('*').ilike('full_name',u.trim()).single()
     setLd(false)
-    if(error||!data){setErr('Usuário não encontrado');return}
-    if(p!==(data.senha||'123456')){setErr('Senha incorreta');return}
-    onProf(data)
+    if(cliErr||!cliData){setErr('Usuário não encontrado');return}
+    if(p!==(cliData.senha||'1234')){setErr('Senha incorreta');return}
+    onCliente(cliData)
   }
 
   return(
@@ -274,7 +282,7 @@ function Login({onAdmin,onProf}){
             <input type="password" value={p} onChange={e=>{setP(e.target.value);setErr('')}} onKeyDown={e=>e.key==='Enter'&&go()} placeholder="••••••" className="inp"/>
             {err&&<Alert type="danger" c={err}/>}
             <button onClick={go} disabled={ld} className="login-btn">{ld?'Verificando…':'Entrar'}</button>
-            <div className="login-hint">Admin: Alexandre &nbsp;·&nbsp; Profissionais: senha 123456</div>
+            <div className="login-hint">Admin: Alexandre (123456) · Profissionais (123456) · Clientes (1234)</div>
             <div className="login-ver">{VERSION}</div>
           </div>
         </div>
@@ -302,6 +310,7 @@ function Admin({onLogout}){
   const [srvs,setSrvs]=useState([])
   const [cats,setCats]=useState([])
   const [blocks,setBlocks]=useState([])
+  const [retPeriod,setRetPeriod]=useState(30)
 
   const toast2=(m,ok=true)=>{setToast({m,ok});setTimeout(()=>setToast(null),3200)}
   const F=k=>v=>setForm(f=>({...f,[k]:v}))
@@ -331,7 +340,7 @@ function Admin({onLogout}){
 
   // free slots respecting duration
   // cabeleireiro: até 3 simultâneos | manicure/sobrancelha: 1
-  const MAX_SIM={cabelereiro:3,manicure:1,sobrancelha:1}
+  const MAX_SIM={cabelereiro:2,manicure:1,sobrancelha:1}
   const freeSlotsFor=(nom,dmy)=>{
     if(!nom||!dmy)return SLOTS
     const p=profs.find(x=>x.full_name===nom);if(!p)return[]
@@ -369,6 +378,30 @@ function Admin({onLogout}){
     paid:Number(a.price_charged)||0, durMin:Number(a.duration_min)||30,
     comPct:Number(a.commission_pct)||0, comVal:Number(a.commission_value)||0,
   }))
+
+  // ── SOLICITAÇÕES (status='pending') ─────────────────
+  const solicitacoes=agRows.filter(a=>a.status==='pending')
+  const pendCount=solicitacoes.length
+
+  async function aprovarSol(id){
+    await supabase.from('salon_bookings').update({status:'scheduled'}).eq('id',id)
+    toast2('Agendamento aprovado! ✓');load()
+  }
+  async function recusarSol(id){
+    if(!window.confirm('Recusar esta solicitação?'))return
+    await supabase.from('salon_bookings').update({status:'cancelled'}).eq('id',id)
+    toast2('Solicitação recusada.');load()
+  }
+
+  // ── RETENÇÃO ─────────────────────────────────────────
+  const hoje=new Date()
+  const retClientes=clients.map(c=>{
+    const ult=c.last_visit?new Date(c.last_visit):null
+    const diasSemVisita=ult?Math.floor((hoje-ult)/(1000*60*60*24)):999
+    return{...c,diasSemVisita,ultVisitaDmy:c.last_visit?isoToDmy(c.last_visit):'Nunca'}
+  })
+  const semRetorno=retClientes.filter(c=>c.diasSemVisita>=retPeriod).sort((a,b)=>b.diasSemVisita-a.diasSemVisita)
+  const maisFrequentes=retClientes.filter(c=>(c.visits||0)>0).sort((a,b)=>(b.visits||0)-(a.visits||0)).slice(0,10)
 
   const today=todayStr()
   const agToday=agRows.filter(a=>a.dmy===today&&a.status!=='cancelled')
@@ -460,9 +493,17 @@ function Admin({onLogout}){
   async function delAg(id){
     const a=agRows.find(x=>x.id===id)
     if(a?.status==='completed'){toast2('Atendimentos finalizados não podem ser excluídos',false);return}
-    if(!window.confirm('Excluir agendamento?'))return
-    await supabase.from('salon_bookings').delete().eq('id',id)
-    toast2('Removido!');load()
+    if(!window.confirm('Cancelar este agendamento? O profissional será notificado.'))return
+    // Marca como cancelado em vez de deletar — profissional verá na aba Avisos
+    const{error}=await supabase.from('salon_bookings').update({
+      status:'cancelled',
+      cancelled_at: new Date().toISOString(),
+    }).eq('id',id)
+    if(error){
+      // Se coluna não existir, tenta só o status
+      await supabase.from('salon_bookings').update({status:'cancelled'}).eq('id',id)
+    }
+    toast2('Agendamento cancelado! Profissional notificado.');load()
   }
 
   function editAg(a){
@@ -566,7 +607,9 @@ function Admin({onLogout}){
   const navItems=[
     {id:'dashboard',label:'Dashboard',icon:'⬡'},
     {id:'agenda',label:'Agenda',icon:'◷'},
+    {id:'solicitacoes',label:'Solicitações',icon:'🔔'},
     {id:'clientes',label:'Clientes',icon:'◉'},
+    {id:'retencao',label:'Retenção',icon:'📊'},
     {id:'profissionais',label:'Profissionais',icon:'✦'},
     {id:'servicos',label:'Serviços',icon:'◈'},
     {id:'financeiro',label:'Financeiro',icon:'◎'},
@@ -608,7 +651,10 @@ function Admin({onLogout}){
           {navItems.map(n=>(
             <div key={n.id} className={`nav-item${tab===n.id?' active':''}`} onClick={()=>{setTab(n.id);setQ('');setSb(false)}}>
               <span className="nav-icon">{n.icon}</span>
-              <span>{n.label}</span>
+              <span style={{flex:1}}>{n.label}</span>
+              {n.id==='solicitacoes'&&pendCount>0&&(
+                <span style={{background:'#b33a3a',color:'white',borderRadius:'50%',width:18,height:18,fontSize:10,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{pendCount}</span>
+              )}
             </div>
           ))}
         </nav>
@@ -867,6 +913,140 @@ function Admin({onLogout}){
               </div>}
             </div>
           </>)}
+
+          {/* ══ SOLICITAÇÕES ══ */}
+          {tab==='solicitacoes'&&(<div className="au">
+            <div className="card">
+              <div className="card-hd">
+                <span className="ch">Solicitações de Clientes</span>
+                <span style={{fontSize:12,color:T.onSurfaceLow}}>{pendCount} pendente{pendCount!==1?'s':''}</span>
+              </div>
+              {solicitacoes.length===0
+                ?<div style={{padding:32,textAlign:'center',color:T.onSurfaceLow,fontSize:13}}>
+                  Nenhuma solicitação pendente 🎉
+                 </div>
+                :<div style={{padding:'0 14px 14px'}}>
+                  {solicitacoes.map(a=>(
+                    <div key={a.id} style={{display:'flex',alignItems:'center',gap:12,padding:'14px 16px',borderRadius:14,background:T.amberPale,border:`1px solid ${T.amber}22`,marginBottom:10}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4,flexWrap:'wrap'}}>
+                          <span style={{fontSize:10,fontWeight:700,letterSpacing:2,textTransform:'uppercase',color:T.amber}}>⏳ Aguardando Aprovação</span>
+                          <span style={{fontSize:10,color:T.onSurfaceLow}}>{a.dmy} às {a.time}</span>
+                        </div>
+                        <div style={{fontSize:14,fontWeight:700,color:T.onSurface}}>{a.cliName}</div>
+                        <div style={{fontSize:12,color:T.onSurfaceMed,marginTop:2}}>{a.srvName} · {a.profName}</div>
+                        <div style={{fontSize:12,color:T.primary,marginTop:2,fontWeight:600}}>{fmtCurrency(a.price)}</div>
+                      </div>
+                      <div style={{display:'flex',flexDirection:'column',gap:6,flexShrink:0}}>
+                        <button className="btn btn-success btn-sm" onClick={()=>aprovarSol(a.id)}>✓ Aprovar</button>
+                        <button className="btn btn-danger btn-sm" onClick={()=>recusarSol(a.id)}>✕ Recusar</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              }
+            </div>
+          </div>)}
+
+          {/* ══ RETENÇÃO ══ */}
+          {tab==='retencao'&&(<div className="au">
+            <div className="card">
+              <div className="card-hd">
+                <span className="ch">Análise de Retenção</span>
+                <div style={{display:'flex',gap:6}}>
+                  {[30,60,120].map(d=>(
+                    <button key={d} onClick={()=>setRetPeriod(d)}
+                      style={{padding:'6px 12px',border:'none',borderRadius:8,cursor:'pointer',fontSize:11,fontWeight:700,
+                        background:retPeriod===d?T.primary:T.surfaceLow,
+                        color:retPeriod===d?'white':T.onSurfaceMed,transition:'all .18s'}}>
+                      {d} dias
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* KPIs retenção */}
+              <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,padding:'0 18px 18px'}}>
+                {[
+                  {l:'Total Clientes',v:clients.length,ic:'👥'},
+                  {l:`Sem retorno +${retPeriod}d`,v:semRetorno.length,ic:'⚠️'},
+                  {l:'Retornaram',v:clients.filter(c=>(c.visits||0)>=2).length,ic:'✅'},
+                ].map(k=>(
+                  <div key={k.l} style={{background:T.surfaceLow,borderRadius:14,padding:'14px 12px',textAlign:'center'}}>
+                    <div style={{fontSize:20,marginBottom:4}}>{k.ic}</div>
+                    <div style={{fontFamily:'Noto Serif,serif',fontSize:22,fontWeight:700,color:T.onSurface}}>{k.v}</div>
+                    <div style={{fontSize:9,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',color:T.onSurfaceLow,marginTop:3}}>{k.l}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Top mais frequentes */}
+            <div className="card">
+              <div className="card-hd"><span className="ch">🏆 Clientes Mais Frequentes</span></div>
+              {maisFrequentes.length===0
+                ?<div style={{padding:24,textAlign:'center',color:T.onSurfaceLow,fontSize:13}}>Nenhum dado ainda</div>
+                :<div style={{overflowX:'auto'}}>
+                  <table className="tbl">
+                    <thead><tr><th>#</th><th>Cliente</th><th>Telefone</th><th>Visitas</th><th>Total Gasto</th><th>Última Visita</th></tr></thead>
+                    <tbody>
+                      {maisFrequentes.map((c,i)=>(
+                        <tr key={c.id}>
+                          <td><span style={{background:T.primaryPale,color:T.primary,borderRadius:6,padding:'2px 8px',fontSize:11,fontWeight:700}}>{i+1}</span></td>
+                          <td style={{fontWeight:600}}>{c.full_name}</td>
+                          <td style={{color:T.onSurfaceLow,fontSize:12}}>{c.phone||'—'}</td>
+                          <td><span style={{fontWeight:700,color:T.primary}}>{c.visits||0}</span></td>
+                          <td style={{fontWeight:600,color:T.success}}>{fmtCurrency(c.total_spent)}</td>
+                          <td style={{fontSize:12,color:T.onSurfaceLow}}>{c.ultVisitaDmy}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              }
+            </div>
+
+            {/* Clientes sem retorno */}
+            <div className="card">
+              <div className="card-hd">
+                <span className="ch">⚠️ Sem Retorno há +{retPeriod} dias</span>
+                <span style={{fontSize:12,color:T.onSurfaceLow}}>{semRetorno.length} clientes</span>
+              </div>
+              {semRetorno.length===0
+                ?<div style={{padding:24,textAlign:'center',color:T.onSurfaceLow,fontSize:13}}>Todos os clientes retornaram dentro do período! 🎉</div>
+                :<div style={{overflowX:'auto'}}>
+                  <table className="tbl">
+                    <thead><tr><th>Cliente</th><th>Telefone</th><th>Última Visita</th><th>Dias sem retorno</th><th>Visitas</th></tr></thead>
+                    <tbody>
+                      {semRetorno.map(c=>(
+                        <tr key={c.id}>
+                          <td style={{fontWeight:600}}>{c.full_name}</td>
+                          <td>
+                            {c.phone
+                              ?<a href={`https://wa.me/55${c.phone.replace(/\D/g,'')}`} target="_blank" rel="noreferrer"
+                                  style={{color:T.success,fontWeight:600,fontSize:12,textDecoration:'none'}}>
+                                  📱 {c.phone}
+                                </a>
+                              :<span style={{color:T.onSurfaceLow,fontSize:12}}>—</span>
+                            }
+                          </td>
+                          <td style={{fontSize:12,color:T.onSurfaceLow}}>{c.ultVisitaDmy}</td>
+                          <td>
+                            <span style={{
+                              background:c.diasSemVisita>=120?T.dangerPale:c.diasSemVisita>=60?T.amberPale:T.primaryPale,
+                              color:c.diasSemVisita>=120?T.danger:c.diasSemVisita>=60?T.amber:T.primary,
+                              borderRadius:8,padding:'3px 10px',fontSize:11,fontWeight:700
+                            }}>{c.diasSemVisita===999?'Nunca visitou':c.diasSemVisita+' dias'}</span>
+                          </td>
+                          <td style={{fontSize:12,color:T.onSurfaceLow}}>{c.visits||0}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              }
+            </div>
+          </div>)}
 
           {/* ══ CLIENTES ══ */}
           {tab==='clientes'&&(<div className="au">
@@ -1289,7 +1469,7 @@ function ProfPanel({prof,onLogout}){
     closeM();toast2('Bloqueio salvo!');load()
   }
 
-  const tabs2=[{id:'hoje',label:'Hoje',ic:'📅'},{id:'proximos',label:'Próximos',ic:'🗓'},{id:'agendar',label:'Agendar',ic:'➕'},{id:'notificacoes',label:'Notificações',ic:'🔔'},{id:'rendimentos',label:'Rendimentos',ic:'◎'},{id:'bloqueios',label:'Bloqueios',ic:'🚫'},{id:'senha',label:'Minha Senha',ic:'🔑'}]
+  const tabs2=[{id:'hoje',label:'Hoje',ic:'📅'},{id:'proximos',label:'Próximos',ic:'🗓'},{id:'agendar',label:'Agendar',ic:'➕'},{id:'notificacoes',label:'Avisos',ic:'🔔'},{id:'rendimentos',label:'Ganhos',ic:'◎'},{id:'bloqueios',label:'Bloqueios',ic:'🚫'},{id:'senha',label:'Senha',ic:'🔑'}]
 
   // ── AGENDAR (profissional agenda para si mesmo) ──────
   const [agSrvs,setAgSrvs]=useState([])
@@ -1632,6 +1812,162 @@ function ProfPanel({prof,onLogout}){
 }
 
 // ══════════════════════════════════════════════════════
+// PORTAL DO CLIENTE
+// ══════════════════════════════════════════════════════
+function PortalCliente({cliente,onLogout}){
+  const [srvs,setSrvs]=useState([])
+  const [profs,setProfs]=useState([])
+  const [ags,setAgs]=useState([])
+  const [form,setForm]=useState({service_name:'',professional_name:'',dmy:todayStr(),time:''})
+  const [err,setErr]=useState('')
+  const [ok,setOk]=useState('')
+  const [minhasReservas,setMinhasReservas]=useState([])
+  const F=k=>v=>setForm(f=>({...f,[k]:v}))
+
+  useEffect(()=>{
+    supabase.from('services').select('*').eq('active',true).order('name').then(({data})=>setSrvs(data||[]))
+    supabase.from('salon_professionals').select('*').eq('active',true).order('full_name').then(({data})=>setProfs(data||[]))
+    supabase.from('salon_bookings').select('*').eq('client_name',cliente.full_name).order('booking_date','desc').then(({data})=>setAgs(data||[]))
+  },[cliente.full_name])
+
+  const profsParaServico=()=>{
+    const s=srvs.find(x=>x.name===form.service_name)
+    if(!s||!s.tipo)return profs
+    return profs.filter(p=>p.tipo===s.tipo)
+  }
+
+  const slotsLivres=()=>{
+    if(!form.professional_name||!form.dmy)return SLOTS
+    const p=profs.find(x=>x.full_name===form.professional_name)
+    if(!p)return[]
+    const hi=(p.schedule_start||'08:00').slice(0,5),hf=(p.schedule_end||'18:00').slice(0,5)
+    const srvNow=srvs.find(x=>x.name===form.service_name)
+    const durNow=Number(srvNow?.duration_min)||30
+    return SLOTS.filter(h=>{
+      if(h<hi||h>hf)return false
+      if(!isFuture(form.dmy,h))return false
+      const ini=toMin(h),fim=ini+durNow
+      if(fim>toMin(hf)+1)return false
+      return true
+    })
+  }
+
+  async function enviarSolicitacao(){
+    setErr('');setOk('')
+    if(!form.service_name||!form.professional_name||!form.dmy||!form.time){setErr('Preencha todos os campos');return}
+    const s=srvs.find(x=>x.name===form.service_name)
+    const{error}=await supabase.from('salon_bookings').insert({
+      client_name:cliente.full_name,
+      service_name:form.service_name,
+      professional_name:form.professional_name,
+      booking_date:dmyToISO(form.dmy),
+      start_time:form.time+':00',
+      status:'pending',
+      price_charged:s?.price||0,
+      service_price:s?.price||0,
+      duration_min:s?.duration_min||30,
+    })
+    if(error){setErr('Erro ao enviar: '+error.message);return}
+    setOk('✅ Solicitação enviada! Aguarde a aprovação do salão.')
+    setForm({service_name:'',professional_name:'',dmy:todayStr(),time:''})
+    supabase.from('salon_bookings').select('*').eq('client_name',cliente.full_name).order('booking_date','desc').then(({data})=>setAgs(data||[]))
+  }
+
+  const minhasAgs=ags.map(a=>({
+    id:a.id,dmy:isoToDmy(a.booking_date),time:(a.start_time||'').slice(0,5),
+    srvName:a.service_name,profName:a.professional_name,status:a.status,
+    price:Number(a.service_price)||0
+  }))
+
+  const statusInfo=(s)=>{
+    if(s==='pending')   return {label:'⏳ Aguardando aprovação',bg:'#fdf3e0',color:'#8a6020'}
+    if(s==='scheduled') return {label:'✅ Confirmado',bg:'#e8f5ec',color:'#3a7a4a'}
+    if(s==='completed') return {label:'✓ Finalizado',bg:'#e8f5ec',color:'#3a7a4a'}
+    if(s==='cancelled') return {label:'❌ Cancelado',bg:'#fbeaea',color:'#b33a3a'}
+    return {label:s,bg:'#f4f3f1',color:'#7a7a6a'}
+  }
+
+  return(
+    <>
+      <style>{G}</style>
+      <style>{`body{background:${T.surfaceLow}!important;}.pw{max-width:620px;margin:0 auto;padding:20px 16px 60px;}`}</style>
+      <div className="pw">
+        {/* Header */}
+        <div className="card au" style={{marginBottom:16}}>
+          <div style={{padding:'18px 20px',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:10}}>
+            <div style={{display:'flex',alignItems:'center',gap:14}}>
+              <div style={{width:48,height:48,borderRadius:'50%',background:`linear-gradient(135deg,${T.primaryLight},${T.primary})`,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Noto Serif,serif',fontSize:20,fontWeight:700,color:'white',flexShrink:0}}>
+                {(cliente.full_name||'?')[0]}
+              </div>
+              <div>
+                <div style={{fontFamily:'Noto Serif,serif',fontSize:20,fontWeight:600}}>Olá, {cliente.full_name.split(' ')[0]}!</div>
+                <div style={{fontSize:11,color:T.onSurfaceLow,marginTop:2}}>Joudat Salon — Portal do Cliente</div>
+              </div>
+            </div>
+            <button onClick={onLogout} className="btn btn-ghost btn-sm">Sair</button>
+          </div>
+        </div>
+
+        {/* Formulário de solicitação */}
+        <div className="card au1">
+          <div className="card-hd"><span className="ch">Solicitar Agendamento</span></div>
+          <div style={{padding:'0 20px 20px'}}>
+            <div className="alert alert-info" style={{marginTop:10,marginBottom:4}}>
+              💡 Sua solicitação será enviada ao salão e confirmada pelo administrador.
+            </div>
+            <Lbl c="Serviço *"/>
+            <Sel v={form.service_name} set={v=>setForm(f=>({...f,service_name:v,professional_name:'',time:''}))}>
+              <option value="">Selecionar serviço...</option>
+              {srvs.map(s=><option key={s.id} value={s.name}>{s.name} — {fmtCurrency(s.price)} ({s.duration_min}min)</option>)}
+            </Sel>
+            <Lbl c="Profissional *"/>
+            <Sel v={form.professional_name} set={v=>setForm(f=>({...f,professional_name:v,time:''}))}>
+              <option value="">Selecionar profissional...</option>
+              {profsParaServico().map(p=><option key={p.id} value={p.full_name}>{p.full_name} — {p.specialty}</option>)}
+            </Sel>
+            <Lbl c="Data *"/>
+            <input type="date" min={todayISO()} value={dmyToISO(form.dmy)||''} onChange={e=>setForm(f=>({...f,dmy:isoToDmy(e.target.value),time:''}))} className="inp"/>
+            <Lbl c="Horário *"/>
+            <Sel v={form.time} set={F('time')}>
+              <option value="">Selecionar horário...</option>
+              {slotsLivres().map(h=><option key={h} value={h}>{h}</option>)}
+            </Sel>
+            {err&&<Alert type="danger" c={err}/>}
+            {ok&&<Alert type="success" c={ok}/>}
+            <button className="btn btn-primary" style={{width:'100%',marginTop:18,justifyContent:'center'}} onClick={enviarSolicitacao}>
+              Enviar Solicitação
+            </button>
+          </div>
+        </div>
+
+        {/* Minhas reservas */}
+        <div className="card au2">
+          <div className="card-hd"><span className="ch">Minhas Reservas</span></div>
+          <div style={{padding:'0 14px 14px'}}>
+            {minhasAgs.length===0
+              ?<div style={{padding:24,textAlign:'center',color:T.onSurfaceLow,fontSize:13}}>Nenhuma reserva ainda</div>
+              :minhasAgs.map(a=>{
+                const si=statusInfo(a.status)
+                return(
+                  <div key={a.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px',borderRadius:12,background:si.bg,marginBottom:8,border:`1px solid ${si.color}22`}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:700,color:T.onSurface}}>{a.srvName}</div>
+                      <div style={{fontSize:11,color:T.onSurfaceMed,marginTop:2}}>{a.profName} · {a.dmy} às {a.time}</div>
+                      <div style={{fontSize:12,fontWeight:600,color:T.primary,marginTop:2}}>{fmtCurrency(a.price)}</div>
+                    </div>
+                    <span style={{padding:'4px 10px',borderRadius:8,fontSize:10,fontWeight:700,color:si.color,background:'rgba(255,255,255,.6)',flexShrink:0}}>{si.label}</span>
+                  </div>
+                )
+              })
+            }
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ══════════════════════════════════════════════════════
 // COMPONENTE ALTERAR SENHA ADMIN
 // ══════════════════════════════════════════════════════
 function AdminSenhaComp({toast2}){
@@ -1679,7 +2015,9 @@ function AdminSenhaComp({toast2}){
 export default function Joudat(){
   const [mode,setMode]=useState(null)
   const [profData,setProfData]=useState(null)
-  if(mode==='admin')   return <Admin onLogout={()=>setMode(null)}/>
-  if(mode==='prof')    return <ProfPanel prof={profData} onLogout={()=>{setMode(null);setProfData(null)}}/>
-  return <Login onAdmin={()=>setMode('admin')} onProf={p=>{setProfData(p);setMode('prof')}}/>
+  const [cliData,setCliData]=useState(null)
+  if(mode==='admin')    return <Admin onLogout={()=>setMode(null)}/>
+  if(mode==='prof')     return <ProfPanel prof={profData} onLogout={()=>{setMode(null);setProfData(null)}}/>
+  if(mode==='cliente')  return <PortalCliente cliente={cliData} onLogout={()=>{setMode(null);setCliData(null)}}/>
+  return <Login onAdmin={()=>setMode('admin')} onProf={p=>{setProfData(p);setMode('prof')}} onCliente={c=>{setCliData(c);setMode('cliente')}}/>
 }
