@@ -1,6 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
 import bcrypt from 'bcryptjs'
 
+const ADMIN_USER = 'Alexandre'
+const MAX_TENT = 5
+const BLOQUEIO_MS = 15 * 60 * 1000
+const tentativas = {}
+
 function getSupabase() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -8,72 +13,151 @@ function getSupabase() {
   )
 }
 
-export async function POST(req) {
-  const { tipo, id, senhaAtual, senhaNova } = await req.json()
+function getIP(req) {
+  return req.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown'
+}
 
-  if (!tipo || !id || !senhaAtual || !senhaNova) {
-    return Response.json({ ok: false, erro: 'Dados incompletos' }, { status: 400 })
+function verificaBloqueio(ip) {
+  const t = tentativas[ip]
+  if (!t) return false
+  if (t.bloqueadoAte && Date.now() < t.bloqueadoAte) return true
+  if (t.bloqueadoAte && Date.now() >= t.bloqueadoAte) delete tentativas[ip]
+  return false
+}
+
+function registraFalha(ip) {
+  if (!tentativas[ip]) tentativas[ip] = { count: 0 }
+  tentativas[ip].count++
+  if (tentativas[ip].count >= MAX_TENT) {
+    tentativas[ip].bloqueadoAte = Date.now() + BLOQUEIO_MS
+  }
+}
+
+function resetaTentativas(ip) {
+  delete tentativas[ip]
+}
+
+function qtdRestantes(ip) {
+  return MAX_TENT - (tentativas[ip]?.count || 0)
+}
+
+export async function POST(req) {
+  const ip = getIP(req)
+
+  if (verificaBloqueio(ip)) {
+    return Response.json({
+      ok: false,
+      erro: 'Muitas tentativas incorretas. Tente novamente em 15 minutos.'
+    }, { status: 429 })
   }
 
-  if (senhaNova.length < 6) {
-    return Response.json({ ok: false, erro: 'Nova senha deve ter pelo menos 6 caracteres' }, { status: 400 })
+  const { usuario, senha } = await req.json()
+  if (!usuario || !senha) {
+    return Response.json({ ok: false, erro: 'Usuário e senha são obrigatórios' }, { status: 400 })
   }
 
   const supabase = getSupabase()
 
-  // PROFISSIONAL
-  if (tipo === 'profissional') {
-    const { data: prof } = await supabase
-      .from('salon_professionals')
-      .select('senha, senha_hash')
-      .eq('id', id)
+  // ── ADMIN ──────────────────────────────────────────
+  if (usuario.trim() === ADMIN_USER) {
+    // Busca hash da senha do admin no banco
+    const { data: setting } = await supabase
+      .from('salon_settings')
+      .select('value')
+      .eq('key', 'admin_senha_hash')
       .single()
 
-    if (!prof) return Response.json({ ok: false, erro: 'Profissional não encontrado' }, { status: 404 })
+    let ok = false
 
+    if (setting?.value) {
+      // Verifica com hash bcrypt
+      ok = await bcrypt.compare(senha, setting.value)
+    } else {
+      // Fallback: primeira vez, aceita senha do env e grava hash
+      const senhaEnv = process.env.ADMIN_SENHA || '123456'
+      ok = senha === senhaEnv
+      if (ok) {
+        // Grava hash para próximas vezes
+        const hash = await bcrypt.hash(senhaEnv, 12)
+        await supabase.from('salon_settings').upsert({
+          key: 'admin_senha_hash',
+          value: hash,
+          updated_at: new Date().toISOString()
+        })
+      }
+    }
+
+    if (!ok) {
+      registraFalha(ip)
+      const r = qtdRestantes(ip)
+      return Response.json({
+        ok: false,
+        erro: r > 0
+          ? `Senha incorreta. ${r} tentativa(s) restante(s).`
+          : 'Conta bloqueada por 15 minutos.'
+      }, { status: 401 })
+    }
+    resetaTentativas(ip)
+    return Response.json({ ok: true, perfil: 'admin' })
+  }
+
+  // ── PROFISSIONAL ───────────────────────────────────
+  const { data: prof } = await supabase
+    .from('salon_professionals')
+    .select('*')
+    .ilike('full_name', usuario.trim())
+    .eq('active', true)
+    .single()
+
+  if (prof) {
     let ok = false
     if (prof.senha_hash) {
-      ok = await bcrypt.compare(senhaAtual, prof.senha_hash)
+      ok = await bcrypt.compare(senha, prof.senha_hash)
     } else {
-      ok = senhaAtual === (prof.senha || '123456')
+      ok = senha === (prof.senha || '123456')
     }
-    if (!ok) return Response.json({ ok: false, erro: 'Senha atual incorreta' }, { status: 401 })
-
-    const novoHash = await bcrypt.hash(senhaNova, 12)
-    await supabase
-      .from('salon_professionals')
-      .update({ senha_hash: novoHash, senha: null })
-      .eq('id', id)
-
-    return Response.json({ ok: true })
+    if (!ok) {
+      registraFalha(ip)
+      const r = qtdRestantes(ip)
+      return Response.json({
+        ok: false,
+        erro: r > 0
+          ? `Senha incorreta. ${r} tentativa(s) restante(s).`
+          : 'Conta bloqueada por 15 minutos.'
+      }, { status: 401 })
+    }
+    resetaTentativas(ip)
+    return Response.json({ ok: true, perfil: 'profissional', dados: prof })
   }
 
-  // CLIENTE
-  if (tipo === 'cliente') {
-    const { data: cli } = await supabase
-      .from('salon_clients')
-      .select('senha, senha_hash')
-      .eq('id', id)
-      .single()
+  // ── CLIENTE ────────────────────────────────────────
+  const { data: cli } = await supabase
+    .from('salon_clients')
+    .select('*')
+    .ilike('full_name', usuario.trim())
+    .single()
 
-    if (!cli) return Response.json({ ok: false, erro: 'Cliente não encontrado' }, { status: 404 })
-
+  if (cli) {
     let ok = false
     if (cli.senha_hash) {
-      ok = await bcrypt.compare(senhaAtual, cli.senha_hash)
+      ok = await bcrypt.compare(senha, cli.senha_hash)
     } else {
-      ok = senhaAtual === (cli.senha || '1234')
+      ok = senha === (cli.senha || '1234')
     }
-    if (!ok) return Response.json({ ok: false, erro: 'Senha atual incorreta' }, { status: 401 })
-
-    const novoHash = await bcrypt.hash(senhaNova, 12)
-    await supabase
-      .from('salon_clients')
-      .update({ senha_hash: novoHash, senha: null })
-      .eq('id', id)
-
-    return Response.json({ ok: true })
+    if (!ok) {
+      registraFalha(ip)
+      const r = qtdRestantes(ip)
+      return Response.json({
+        ok: false,
+        erro: r > 0
+          ? `Senha incorreta. ${r} tentativa(s) restante(s).`
+          : 'Conta bloqueada por 15 minutos.'
+      }, { status: 401 })
+    }
+    resetaTentativas(ip)
+    return Response.json({ ok: true, perfil: 'cliente', dados: cli })
   }
 
-  return Response.json({ ok: false, erro: 'Tipo inválido' }, { status: 400 })
+  registraFalha(ip)
+  return Response.json({ ok: false, erro: 'Usuário não encontrado' }, { status: 401 })
 }
