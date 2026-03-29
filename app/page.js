@@ -2406,14 +2406,21 @@ function AdminSenhaComp({toast2}){
   // Como não temos tabela de admin, usamos localStorage para persistir
   async function salvar(){
     setErr('');setOk('')
-    const senhaAtualSalva=localStorage.getItem('admin_senha')||'123456'
-    if(senhaAtual!==senhaAtualSalva){setErr('Senha atual incorreta');return}
-    if(!senhaNova||senhaNova.length<4){setErr('Nova senha deve ter pelo menos 4 caracteres');return}
+    if(!senhaAtual){setErr('Informe a senha atual');return}
+    if(!senhaNova||senhaNova.length<6){setErr('Nova senha deve ter pelo menos 6 caracteres');return}
     if(senhaNova!==senhaConf){setErr('As senhas não coincidem');return}
-    localStorage.setItem('admin_senha',senhaNova)
-    setOk('✅ Senha alterada com sucesso!')
-    setSenhaAtual('');setSenhaNova('');setSenhaConf('')
-    toast2('Senha do administrador alterada!')
+    try{
+      const res=await fetch('/api/alterar-senha',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({tipo:'admin',senhaAtual,senhaNova})
+      })
+      const json=await res.json()
+      if(!json.ok){setErr(json.erro||'Erro ao alterar');return}
+      setOk('✅ Senha alterada com sucesso!')
+      setSenhaAtual('');setSenhaNova('');setSenhaConf('')
+      toast2('Senha do administrador alterada!')
+    }catch(e){setErr('Erro de conexão. Tente novamente.')}
   }
 
   return(
