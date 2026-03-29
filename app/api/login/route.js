@@ -37,7 +37,7 @@ function resetaTentativas(ip) {
   delete tentativas[ip]
 }
 
-function restantes(ip) {
+function qtdRestantes(ip) {
   return MAX_TENT - (tentativas[ip]?.count || 0)
 }
 
@@ -52,7 +52,6 @@ export async function POST(req) {
   }
 
   const { usuario, senha } = await req.json()
-
   if (!usuario || !senha) {
     return Response.json({ ok: false, erro: 'Usuário e senha são obrigatórios' }, { status: 400 })
   }
@@ -61,19 +60,41 @@ export async function POST(req) {
 
   // ── ADMIN ──────────────────────────────────────────
   if (usuario.trim() === ADMIN_USER) {
-    const senhaAdmin = process.env.ADMIN_SENHA || '123456'
+    // Busca hash da senha do admin no banco
+    const { data: setting } = await supabase
+      .from('salon_settings')
+      .select('value')
+      .eq('key', 'admin_senha_hash')
+      .single()
+
     let ok = false
-    if (senhaAdmin.startsWith('$2b$') || senhaAdmin.startsWith('$2a$')) {
-      ok = await bcrypt.compare(senha, senhaAdmin)
+
+    if (setting?.value) {
+      // Verifica com hash bcrypt
+      ok = await bcrypt.compare(senha, setting.value)
     } else {
-      ok = senha === senhaAdmin
+      // Fallback: primeira vez, aceita senha do env e grava hash
+      const senhaEnv = process.env.ADMIN_SENHA || '123456'
+      ok = senha === senhaEnv
+      if (ok) {
+        // Grava hash para próximas vezes
+        const hash = await bcrypt.hash(senhaEnv, 12)
+        await supabase.from('salon_settings').upsert({
+          key: 'admin_senha_hash',
+          value: hash,
+          updated_at: new Date().toISOString()
+        })
+      }
     }
+
     if (!ok) {
       registraFalha(ip)
-      const r = restantes(ip)
+      const r = qtdRestantes(ip)
       return Response.json({
         ok: false,
-        erro: r > 0 ? `Senha incorreta. ${r} tentativa(s) restante(s).` : 'Conta bloqueada por 15 minutos.'
+        erro: r > 0
+          ? `Senha incorreta. ${r} tentativa(s) restante(s).`
+          : 'Conta bloqueada por 15 minutos.'
       }, { status: 401 })
     }
     resetaTentativas(ip)
@@ -97,10 +118,12 @@ export async function POST(req) {
     }
     if (!ok) {
       registraFalha(ip)
-      const r = restantes(ip)
+      const r = qtdRestantes(ip)
       return Response.json({
         ok: false,
-        erro: r > 0 ? `Senha incorreta. ${r} tentativa(s) restante(s).` : 'Conta bloqueada por 15 minutos.'
+        erro: r > 0
+          ? `Senha incorreta. ${r} tentativa(s) restante(s).`
+          : 'Conta bloqueada por 15 minutos.'
       }, { status: 401 })
     }
     resetaTentativas(ip)
@@ -123,10 +146,12 @@ export async function POST(req) {
     }
     if (!ok) {
       registraFalha(ip)
-      const r = restantes(ip)
+      const r = qtdRestantes(ip)
       return Response.json({
         ok: false,
-        erro: r > 0 ? `Senha incorreta. ${r} tentativa(s) restante(s).` : 'Conta bloqueada por 15 minutos.'
+        erro: r > 0
+          ? `Senha incorreta. ${r} tentativa(s) restante(s).`
+          : 'Conta bloqueada por 15 minutos.'
       }, { status: 401 })
     }
     resetaTentativas(ip)
