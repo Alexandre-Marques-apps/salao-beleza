@@ -1,4 +1,4 @@
-'use client'
+ 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
@@ -338,29 +338,47 @@ function Admin({onLogout}){
   // extrai nome limpo sem duração do texto do option
   const cleanSrvName=v=>v.replace(/\s*\(\d+min\)\s*$/,'').trim()
 
-  // free slots respecting duration
-  // cabeleireiro: até 3 simultâneos | manicure/sobrancelha: 1
+  // ── FUNÇÃO CENTRAL DE SLOTS LIVRES ─────────────────────
+  // Regra única aplicada para Admin, Profissional e Cliente
+  // manicure/sobrancelha: 0 sobreposição tolerada
+  // cabelereiro: até 2 simultâneos
   const MAX_SIM={cabelereiro:2,manicure:1,sobrancelha:1}
-  const freeSlotsFor=(nom,dmy)=>{
-    if(!nom||!dmy)return SLOTS
-    const p=profs.find(x=>x.full_name===nom);if(!p)return[]
-    const hi=(p.schedule_start||'08:00').slice(0,5),hf=(p.schedule_end||'18:00').slice(0,5)
+
+  function calcSlotsLivres({nomProf, dmy, srvName, excludeId=null, allBookings, bloqueios=[], profsData, srvsData}){
+    const p=profsData.find(x=>x.full_name===nomProf)
+    if(!p||!dmy||!srvName)return[]
+    const hi=(p.schedule_start||'08:00').slice(0,5)
+    const hf=(p.schedule_end||'18:00').slice(0,5)
     const maxSim=MAX_SIM[p.tipo||'manicure']||1
-    const taken=agRows.filter(a=>a.profName===nom&&a.dmy===dmy&&a.status!=='cancelled'&&a.id!==form.id)
-      .map(a=>{const s=srvs.find(x=>x.name===a.srvName);const dur=Number(a.durMin)||Number(s?.duration_min)||30;return{ini:toMin(a.time),fim:toMin(a.time)+dur}})
-    const srvNow=srvs.find(x=>x.name===form.service_name)
+    const srvNow=srvsData.find(x=>x.name===srvName)
     const durNow=Number(srvNow?.duration_min)||30
+    // pega TODOS os agendamentos ativos do profissional neste dia (inclui pending)
+    const taken=allBookings
+      .filter(a=>{
+        const aDmy=isoToDmy(a.booking_date)
+        const aTime=(a.start_time||'').slice(0,5)
+        return a.professional_name===nomProf
+          && aDmy===dmy
+          && a.status!=='cancelled'
+          && a.id!==excludeId
+      })
+      .map(a=>{
+        const s=srvsData.find(x=>x.name===a.service_name)
+        const dur=Number(a.duration_min)||Number(s?.duration_min)||30
+        return{ini:toMin((a.start_time||'').slice(0,5)),fim:toMin((a.start_time||'').slice(0,5))+dur}
+      })
+    const dateISO=dmyToISO(dmy)
     return SLOTS.filter(h=>{
-      if(h<hi||h>hf)return false
+      if(h<hi||h>=hf)return false
       if(!isFuture(dmy,h))return false
       const ini=toMin(h),fim=ini+durNow
-      if(fim>toMin(hf)+1)return false
+      if(fim>toMin(hf))return false
+      // verifica sobreposição considerando TODA a duração do novo serviço
       const overlapping=taken.filter(t=>ini<t.fim&&fim>t.ini).length
       if(overlapping>=maxSim)return false
-      // bloqueia se qualquer slot do serviço cair num período bloqueado
-      const dateISO=dmyToISO(dmy)
-      const bloqueado=blocks.some(b=>{
-        if(b.professional_name!==nom||b.block_date!==dateISO)return false
+      // verifica bloqueios
+      const bloqueado=bloqueios.some(b=>{
+        if(b.professional_name!==nomProf||b.block_date!==dateISO)return false
         const bIni=toMin((b.start_time||'').slice(0,5))
         const bFim=toMin((b.end_time||'').slice(0,5))
         return ini<bFim&&fim>bIni
@@ -369,6 +387,14 @@ function Admin({onLogout}){
       return true
     })
   }
+
+  const freeSlotsFor=(nom,dmy)=>calcSlotsLivres({
+    nomProf:nom, dmy, srvName:form.service_name,
+    excludeId:form.id||null,
+    allBookings:ags, bloqueios:blocks,
+    profsData:profs, srvsData:srvs
+  })
+
 
   // normalize booking rows
   const agRows=ags.map(a=>({
@@ -469,6 +495,24 @@ function Admin({onLogout}){
     if(!p?.tipo){setFerr('Profissional sem classe definida — edite o cadastro');return}
     if(!s?.tipo){setFerr('Serviço sem classe definida — edite o cadastro');return}
     if(p.tipo!==s.tipo){setFerr(`❌ ${p.full_name} (${p.tipo}) não pode realizar "${s.name}" (${s.tipo})`);return}
+    // valida sobreposição — regra inviolável
+    const maxSim2=p.tipo==='cabelereiro'?2:1
+    const dur2=Number(s.duration_min)||30
+    const ini2=toMin(form.time),fim2=ini2+dur2
+    const taken2=ags.filter(a=>
+      a.professional_name===form.professional_name&&
+      isoToDmy(a.booking_date)===form.dmy&&
+      a.status!=='cancelled'&&
+      a.id!==form.id
+    ).map(a=>{
+      const sv=srvs.find(x=>x.name===a.service_name)
+      const d=Number(a.duration_min)||Number(sv?.duration_min)||30
+      return{ini:toMin((a.start_time||'').slice(0,5)),fim:toMin((a.start_time||'').slice(0,5))+d}
+    })
+    const overlap2=taken2.filter(t=>ini2<t.fim&&fim2>t.ini).length
+    if(overlap2>=maxSim2){
+      setFerr(`❌ Conflito de horário — ${p.full_name} já tem ${overlap2} serviço(s) neste período. Máximo: ${maxSim2}`);return
+    }
     const pl={client_name:form.client_name,service_name:form.service_name,professional_name:form.professional_name,booking_date:dmyToISO(form.dmy),start_time:form.time.length===5?form.time+':00':form.time,status:'scheduled',price_charged:s.price||0,service_price:s.price||0,duration_min:s.duration_min||30}
     // Validação de conflito por tipo de profissional
     const pSave=profs.find(x=>x.full_name===form.professional_name)
@@ -1489,26 +1533,27 @@ function ProfPanel({prof,onLogout}){
   const AF=k=>v=>setAgForm(f=>({...f,[k]:v}))
 
   function freeSlotsProf(dmy){
-    if(!dmy)return SLOTS
+    if(!dmy||!agForm.service_name)return SLOTS
     const hi=(prof.schedule_start||'08:00').slice(0,5)
     const hf=(prof.schedule_end||'18:00').slice(0,5)
-    // cabelereiro: até 2 simultâneos | manicure/sobrancelha: 1 por vez
+    // MESMA regra: manicure/sobrancelha=1 | cabelereiro=2
     const maxSim=prof.tipo==='cabelereiro'?2:1
     const srvNow=agSrvs.find(x=>x.name===agForm.service_name)
     const durNow=Number(srvNow?.duration_min)||30
-    const taken=rows
-      .filter(a=>a.dmy===dmy&&a.status!=='cancelled')
+    // usa ags brutos do banco para garantir que pending também conta
+    const taken=ags
+      .filter(a=>a.professional_name===prof.full_name&&isoToDmy(a.booking_date)===dmy&&a.status!=='cancelled')
       .map(a=>{
-        const s=agSrvs.find(x=>x.name===a.srvName)
-        const dur=Number(a.durMin)||Number(s?.duration_min)||30
-        return{ini:toMin(a.time),fim:toMin(a.time)+dur}
+        const s=agSrvs.find(x=>x.name===a.service_name)
+        const dur=Number(a.duration_min)||Number(s?.duration_min)||30
+        return{ini:toMin((a.start_time||'').slice(0,5)),fim:toMin((a.start_time||'').slice(0,5))+dur}
       })
     return SLOTS.filter(h=>{
-      if(h<hi||h>hf)return false
+      if(h<hi||h>=hf)return false
       if(!isFuture(dmy,h))return false
       const ini=toMin(h),fim=ini+durNow
-      if(fim>toMin(hf)+1)return false
-      // conta sobreposições no slot
+      if(fim>toMin(hf))return false
+      // sobreposição total — qualquer parte do novo serviço que bata com existente
       const overlapping=taken.filter(t=>ini<t.fim&&fim>t.ini).length
       if(overlapping>=maxSim)return false
       return true
@@ -1528,6 +1573,24 @@ function ProfPanel({prof,onLogout}){
     setAgConfirm(false)
     setAgLoading(true)
     const s=agSrvs.find(x=>x.name===agForm.service_name)
+    // validação final antes de salvar — regra inviolável
+    const maxSimP=prof.tipo==='cabelereiro'?2:1
+    const durP=Number(s?.duration_min)||30
+    const iniP=toMin(agForm.time),fimP=iniP+durP
+    const overlapP=ags.filter(a=>{
+      if(a.professional_name!==prof.full_name)return false
+      if(isoToDmy(a.booking_date)!==agForm.dmy)return false
+      if(a.status==='cancelled')return false
+      const sv=agSrvs.find(x=>x.name===a.service_name)
+      const d=Number(a.duration_min)||Number(sv?.duration_min)||30
+      const ai=toMin((a.start_time||'').slice(0,5))
+      return iniP<ai+d&&fimP>ai
+    }).length
+    if(overlapP>=maxSimP){
+      setAgLoading(false)
+      setAgErr('❌ Conflito de horário — este período já está ocupado para '+prof.full_name)
+      return
+    }
     const{error}=await supabase.from('salon_bookings').insert({
       client_name:agForm.client_name,
       service_name:agForm.service_name,
@@ -1928,18 +1991,37 @@ function PortalCliente({cliente,onLogout}){
     return profs.filter(p=>p.tipo===s.tipo)
   }
 
+  const [todosAgs,setTodosAgs]=useState([])
+  useEffect(()=>{
+    // carrega TODOS agendamentos para validar conflitos corretamente
+    supabase.from('salon_bookings').select('*').neq('status','cancelled').then(({data})=>setTodosAgs(data||[]))
+  },[])
+
   const slotsLivres=()=>{
-    if(!form.professional_name||!form.dmy)return SLOTS
+    if(!form.professional_name||!form.dmy||!form.service_name)return SLOTS
     const p=profs.find(x=>x.full_name===form.professional_name)
     if(!p)return[]
-    const hi=(p.schedule_start||'08:00').slice(0,5),hf=(p.schedule_end||'18:00').slice(0,5)
+    const hi=(p.schedule_start||'08:00').slice(0,5)
+    const hf=(p.schedule_end||'18:00').slice(0,5)
+    // MESMA regra: manicure/sobrancelha=1 | cabelereiro=2
+    const maxSim=p.tipo==='cabelereiro'?2:1
     const srvNow=srvs.find(x=>x.name===form.service_name)
     const durNow=Number(srvNow?.duration_min)||30
+    const taken=todosAgs
+      .filter(a=>a.professional_name===form.professional_name&&isoToDmy(a.booking_date)===form.dmy)
+      .map(a=>{
+        const s=srvs.find(x=>x.name===a.service_name)
+        const dur=Number(a.duration_min)||Number(s?.duration_min)||30
+        return{ini:toMin((a.start_time||'').slice(0,5)),fim:toMin((a.start_time||'').slice(0,5))+dur}
+      })
     return SLOTS.filter(h=>{
-      if(h<hi||h>hf)return false
+      if(h<hi||h>=hf)return false
       if(!isFuture(form.dmy,h))return false
       const ini=toMin(h),fim=ini+durNow
-      if(fim>toMin(hf)+1)return false
+      if(fim>toMin(hf))return false
+      // bloqueia qualquer sobreposição para manicure/sobrancelha
+      const overlapping=taken.filter(t=>ini<t.fim&&fim>t.ini).length
+      if(overlapping>=maxSim)return false
       return true
     })
   }
@@ -2121,3 +2203,4 @@ export default function Joudat(){
   if(mode==='cliente')  return <PortalCliente cliente={cliData} onLogout={()=>{setMode(null);setCliData(null)}}/>
   return <Login onAdmin={()=>setMode('admin')} onProf={p=>{setProfData(p);setMode('prof')}} onCliente={c=>{setCliData(c);setMode('cliente')}}/>
 }
+     
