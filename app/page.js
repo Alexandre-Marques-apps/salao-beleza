@@ -29,6 +29,41 @@ const toMin = s => { const[h,m]=(s||'00:00').split(':'); return+h*60+ +m }
 const fmtCurrency = n => `R$ ${Number(n||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`
 const fmtPct = n => `${Number(n||0).toFixed(1)}%`
 
+// ── FUNCIONAMENTO DO SALÃO ────────────────────────────
+const DIAS_KEY_MAP = {0:'dom',1:'seg',2:'ter',3:'qua',4:'qui',5:'sex',6:'sab'}
+const DEFAULT_FUNC = {
+  seg:{ativo:true,ini:'08:00',fim:'18:00'},ter:{ativo:true,ini:'08:00',fim:'18:00'},
+  qua:{ativo:true,ini:'08:00',fim:'18:00'},qui:{ativo:true,ini:'08:00',fim:'18:00'},
+  sex:{ativo:true,ini:'08:00',fim:'18:00'},sab:{ativo:true,ini:'08:00',fim:'13:00'},
+  dom:{ativo:false,ini:'08:00',fim:'12:00'}
+}
+function getFuncionamento(){
+  try{
+    const s=typeof window!=='undefined'?localStorage.getItem('joudat_funcionamento'):null
+    return s?JSON.parse(s):DEFAULT_FUNC
+  }catch{return DEFAULT_FUNC}
+}
+// Retorna true se a data (dd/mm/yyyy) está dentro do funcionamento do salão
+function isDiaAberto(dmy){
+  if(!dmy)return false
+  const[dd,mm,yyyy]=dmy.split('/')
+  const dow=new Date(Number(yyyy),Number(mm)-1,Number(dd)).getDay()
+  const key=DIAS_KEY_MAP[dow]
+  const func=getFuncionamento()
+  return !!(func[key]?.ativo)
+}
+// Retorna slots válidos dentro do horário de funcionamento do salão naquele dia
+function getSalonSlots(dmy){
+  if(!dmy)return []
+  const[dd,mm,yyyy]=dmy.split('/')
+  const dow=new Date(Number(yyyy),Number(mm)-1,Number(dd)).getDay()
+  const key=DIAS_KEY_MAP[dow]
+  const func=getFuncionamento()
+  const dia=func[key]
+  if(!dia?.ativo)return []
+  return SLOTS.filter(h=>h>=dia.ini&&h<dia.fim)
+}
+
 // ── DESIGN TOKENS ──────────────────────────────────────
 const T = {
   surface:       '#faf9f6',
@@ -346,6 +381,9 @@ function Admin({onLogout}){
   function calcSlotsLivres({nomProf, dmy, srvName, excludeId=null, allBookings, bloqueios=[], profsData, srvsData}){
     const p=profsData.find(x=>x.full_name===nomProf)
     if(!p||!dmy||!srvName)return[]
+    // bloqueia se o salão estiver fechado neste dia
+    if(!isDiaAberto(dmy))return[]
+    const salonSlots=getSalonSlots(dmy)
     const hi=(p.schedule_start||'08:00').slice(0,5)
     const hf=(p.schedule_end||'18:00').slice(0,5)
     const maxSim=MAX_SIM[p.tipo||'manicure']||1
@@ -369,6 +407,8 @@ function Admin({onLogout}){
     const dateISO=dmyToISO(dmy)
     return SLOTS.filter(h=>{
       if(h<hi||h>=hf)return false
+      // respeita horário de funcionamento do salão
+      if(!salonSlots.includes(h))return false
       if(!isFuture(dmy,h))return false
       const ini=toMin(h),fim=ini+durNow
       if(fim>toMin(hf))return false
@@ -489,6 +529,14 @@ function Admin({onLogout}){
   async function saveAg(){
     setFerr('')
     if(!form.client_name||!form.service_name||!form.professional_name||!form.dmy||!form.time){setFerr('Preencha todos os campos');return}
+    // bloqueia se o salão estiver fechado neste dia
+    if(!isDiaAberto(form.dmy)){
+      const[dd,mm,yyyy]=form.dmy.split('/')
+      const dow=new Date(Number(yyyy),Number(mm)-1,Number(dd)).getDay()
+      const nomeDia=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][dow]
+      setFerr(`❌ O salão está fechado na ${nomeDia}. Verifique os horários em Funcionamento.`)
+      return
+    }
     const p=profs.find(x=>x.full_name===form.professional_name)
     const s=srvs.find(x=>x.name===form.service_name)
     if(!p?.tipo){setFerr('Profissional sem classe definida — edite o cadastro');return}
@@ -867,6 +915,11 @@ function Admin({onLogout}){
                   <span className="ch">Grade de Horários</span>
                   <input type="date" value={dmyToISO(agDate)} onChange={e=>setAgDate(isoToDmy(e.target.value))}
                     style={{padding:'8px 12px',background:T.surfaceLow,border:'none',borderRadius:9,fontFamily:'Manrope',fontSize:12,color:T.onSurface,outline:'none'}}/>
+                  {!isDiaAberto(agDate)&&(
+                    <span style={{padding:'5px 12px',background:'#fbeaea',color:'#b33a3a',borderRadius:8,fontSize:11,fontWeight:700}}>
+                      🚫 Salão fechado neste dia
+                    </span>
+                  )}
                 </div>
                 <button className="btn btn-primary btn-sm" onClick={()=>openM('ag',{client_name:'',service_name:'',professional_name:'',dmy:agDate,time:'',profFix:false})}>+ Agendar</button>
               </div>
@@ -1538,6 +1591,9 @@ function ProfPanel({prof,onLogout}){
 
   function freeSlotsProf(dmy){
     if(!dmy||!agForm.service_name)return SLOTS
+    // salão fechado neste dia
+    if(!isDiaAberto(dmy))return[]
+    const salonSlotsP=getSalonSlots(dmy)
     const hi=(prof.schedule_start||'08:00').slice(0,5)
     const hf=(prof.schedule_end||'18:00').slice(0,5)
     // MESMA regra: manicure/sobrancelha=1 | cabelereiro=2
@@ -1554,6 +1610,7 @@ function ProfPanel({prof,onLogout}){
       })
     return SLOTS.filter(h=>{
       if(h<hi||h>=hf)return false
+      if(!salonSlotsP.includes(h))return false
       if(!isFuture(dmy,h))return false
       const ini=toMin(h),fim=ini+durNow
       if(fim>toMin(hf))return false
@@ -1577,6 +1634,12 @@ function ProfPanel({prof,onLogout}){
     setAgConfirm(false)
     setAgLoading(true)
     const s=agSrvs.find(x=>x.name===agForm.service_name)
+    // bloqueia se o salão estiver fechado neste dia
+    if(!isDiaAberto(agForm.dmy)){
+      setAgLoading(false)
+      setAgErr('❌ O salão está fechado neste dia. Escolha outra data.')
+      return
+    }
     // validação final antes de salvar — regra inviolável
     const maxSimP=prof.tipo==='cabelereiro'?2:1
     const durP=Number(s?.duration_min)||30
@@ -2004,6 +2067,9 @@ function PortalCliente({cliente,onLogout}){
 
   const slotsLivres=()=>{
     if(!form.professional_name||!form.dmy||!form.service_name)return SLOTS
+    // salão fechado neste dia
+    if(!isDiaAberto(form.dmy))return[]
+    const salonSlotsC=getSalonSlots(form.dmy)
     const p=profs.find(x=>x.full_name===form.professional_name)
     if(!p)return[]
     const hi=(p.schedule_start||'08:00').slice(0,5)
@@ -2021,6 +2087,7 @@ function PortalCliente({cliente,onLogout}){
       })
     return SLOTS.filter(h=>{
       if(h<hi||h>=hf)return false
+      if(!salonSlotsC.includes(h))return false
       if(!isFuture(form.dmy,h))return false
       const ini=toMin(h),fim=ini+durNow
       if(fim>toMin(hf))return false
