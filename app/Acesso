@@ -1,4 +1,4 @@
-'use client'
+  'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
@@ -282,7 +282,6 @@ function Login({onAdmin,onProf,onCliente}){
             <input type="password" value={p} onChange={e=>{setP(e.target.value);setErr('')}} onKeyDown={e=>e.key==='Enter'&&go()} placeholder="••••••" className="inp"/>
             {err&&<Alert type="danger" c={err}/>}
             <button onClick={go} disabled={ld} className="login-btn">{ld?'Verificando…':'Entrar'}</button>
-            <div className="login-hint">Admin: Alexandre (123456) · Profissionais (123456) · Clientes (1234)</div>
             <div className="login-ver">{VERSION}</div>
           </div>
         </div>
@@ -657,6 +656,7 @@ function Admin({onLogout}){
     {id:'profissionais',label:'Profissionais',icon:'✦'},
     {id:'servicos',label:'Serviços',icon:'◈'},
     {id:'financeiro',label:'Financeiro',icon:'◎'},
+    {id:'funcionamento',label:'Funcionamento',icon:'🕐'},
     {id:'minha_senha',label:'Minha Senha',icon:'🔑'},
   ]
 
@@ -727,7 +727,7 @@ function Admin({onLogout}){
             <div style={{padding:'6px 14px',background:T.surfaceLow,borderRadius:20,fontSize:11,fontWeight:600,color:T.onSurfaceMed,whiteSpace:'nowrap'}}>
               {new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long'})}
             </div>
-            <button onClick={()=>load()} className="btn btn-ghost btn-sm" title="Atualizar">↻</button>
+            <button onClick={()=>load()} className="btn btn-ghost" style={{fontSize:16,padding:'8px 14px'}} title="Atualizar dados">↻ Atualizar</button>
           </div>
         </div>
 
@@ -1263,6 +1263,10 @@ function Admin({onLogout}){
             </div>
           </div>)}
 
+          {tab==='funcionamento'&&(<div className="au">
+            <FuncionamentoAdmin toast2={toast2}/>
+          </div>)}
+
           {tab==='minha_senha'&&(<div className="au">
             <div className="card">
               <div className="card-hd"><span className="ch">Alterar Senha do Administrador</span></div>
@@ -1657,6 +1661,7 @@ function ProfPanel({prof,onLogout}){
             </div>
             <div style={{display:'flex',gap:8,alignItems:'center'}}>
               <div style={{padding:'6px 12px',background:T.primaryPale,borderRadius:20,fontSize:11,fontWeight:600,color:T.primary,whiteSpace:'nowrap'}}>{new Date().toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short'})}</div>
+              <button onClick={()=>load()} style={{background:'none',border:`1px solid ${T.border||'rgba(119,90,25,.2)'}`,borderRadius:9,padding:'7px 11px',cursor:'pointer',fontSize:15,color:T.primary,fontWeight:600,transition:'background .18s'}} title="Atualizar dados">↻</button>
               <button onClick={onLogout} className="btn btn-ghost btn-sm">Sair</button>
             </div>
           </div>
@@ -2150,6 +2155,166 @@ function PortalCliente({cliente,onLogout}){
 }
 
 // ══════════════════════════════════════════════════════
+// COMPONENTE FUNCIONAMENTO DO SALÃO
+// ══════════════════════════════════════════════════════
+const DIAS_SEMANA = ['Segunda','Terça','Quarta','Quinta','Sexta','Sábado','Domingo']
+const DIAS_KEY    = ['seg','ter','qua','qui','sex','sab','dom']
+
+function FuncionamentoAdmin({toast2}){
+  const defaultConfig={
+    seg:{ativo:true, ini:'08:00', fim:'18:00'},
+    ter:{ativo:true, ini:'08:00', fim:'18:00'},
+    qua:{ativo:true, ini:'08:00', fim:'18:00'},
+    qui:{ativo:true, ini:'08:00', fim:'18:00'},
+    sex:{ativo:true, ini:'08:00', fim:'18:00'},
+    sab:{ativo:true, ini:'08:00', fim:'13:00'},
+    dom:{ativo:false,ini:'08:00', fim:'12:00'},
+    nome:'Joudat Salon',
+    telefone:'',
+    mensagem:'Bem-vindo ao Joudat Salon! Agende seu horário pelo nosso portal.',
+  }
+
+  const [cfg,setCfg]=useState(()=>{
+    try{
+      const saved=localStorage.getItem('joudat_funcionamento')
+      return saved?JSON.parse(saved):defaultConfig
+    }catch{return defaultConfig}
+  })
+  const [saved,setSaved]=useState(false)
+
+  function setDia(key,field,val){
+    setCfg(c=>({...c,[key]:{...c[key],[field]:val}}))
+    setSaved(false)
+  }
+
+  function salvar(){
+    localStorage.setItem('joudat_funcionamento',JSON.stringify(cfg))
+    setSaved(true)
+    toast2('Configurações salvas!')
+    setTimeout(()=>setSaved(false),3000)
+  }
+
+  const T2={
+    surface:'#faf9f6',surfaceLow:'#f4f3f1',surfaceMed:'#efeeeb',
+    primary:'#775a19',primaryLight:'#d4ad65',primaryPale:'#f5edd8',
+    onSurface:'#1a1c1a',onSurfaceLow:'#7a7a6a',success:'#3a7a4a',successPale:'#e8f5ec',
+  }
+
+  const HORAS=['08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30',
+    '12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30',
+    '16:00','16:30','17:00','17:30','18:00','18:30','19:00','19:30','20:00']
+
+  return(
+    <div style={{maxWidth:680}}>
+      {/* Dados do salão */}
+      <div style={{background:'white',borderRadius:20,overflow:'hidden',marginBottom:16}}>
+        <div style={{padding:'16px 20px',borderBottom:`1px solid ${T2.surfaceLow}`,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <span style={{fontFamily:'Noto Serif,serif',fontSize:17,fontWeight:600,color:T2.onSurface}}>Dados do Salão</span>
+        </div>
+        <div style={{padding:'0 20px 20px'}}>
+          <label style={{display:'block',fontSize:10,fontWeight:700,letterSpacing:2,textTransform:'uppercase',color:T2.primary,marginBottom:8,marginTop:18}}>Nome do Salão</label>
+          <input value={cfg.nome||''} onChange={e=>setCfg(c=>({...c,nome:e.target.value}))} className="inp" placeholder="Nome do seu salão"/>
+          <label style={{display:'block',fontSize:10,fontWeight:700,letterSpacing:2,textTransform:'uppercase',color:T2.primary,marginBottom:8,marginTop:18}}>Telefone / WhatsApp</label>
+          <input value={cfg.telefone||''} onChange={e=>setCfg(c=>({...c,telefone:e.target.value}))} className="inp" placeholder="(11) 99999-0000"/>
+          <label style={{display:'block',fontSize:10,fontWeight:700,letterSpacing:2,textTransform:'uppercase',color:T2.primary,marginBottom:8,marginTop:18}}>Mensagem de Boas-vindas</label>
+          <input value={cfg.mensagem||''} onChange={e=>setCfg(c=>({...c,mensagem:e.target.value}))} className="inp" placeholder="Mensagem exibida no portal do cliente"/>
+        </div>
+      </div>
+
+      {/* Dias e horários */}
+      <div style={{background:'white',borderRadius:20,overflow:'hidden',marginBottom:16}}>
+        <div style={{padding:'16px 20px',borderBottom:`1px solid ${T2.surfaceLow}`}}>
+          <span style={{fontFamily:'Noto Serif,serif',fontSize:17,fontWeight:600,color:T2.onSurface}}>Dias e Horários de Funcionamento</span>
+        </div>
+        <div style={{padding:'8px 0 16px'}}>
+          {DIAS_KEY.map((key,i)=>{
+            const d=cfg[key]||{ativo:false,ini:'08:00',fim:'18:00'}
+            return(
+              <div key={key} style={{
+                display:'flex',alignItems:'center',gap:12,padding:'12px 20px',
+                borderBottom:`1px solid ${T2.surfaceLow}`,flexWrap:'wrap',
+                background:d.ativo?'white':T2.surfaceLow,
+                opacity:d.ativo?1:.65,
+                transition:'all .18s',
+              }}>
+                {/* Toggle ativo */}
+                <div style={{display:'flex',alignItems:'center',gap:8,minWidth:110}}>
+                  <div onClick={()=>setDia(key,'ativo',!d.ativo)} style={{
+                    width:40,height:22,borderRadius:11,cursor:'pointer',
+                    background:d.ativo?T2.primary:T2.surfaceMed,
+                    position:'relative',transition:'background .2s',flexShrink:0
+                  }}>
+                    <div style={{
+                      position:'absolute',top:3,left:d.ativo?20:3,
+                      width:16,height:16,borderRadius:'50%',background:'white',
+                      transition:'left .2s',boxShadow:'0 1px 4px rgba(0,0,0,.2)'
+                    }}/>
+                  </div>
+                  <span style={{fontSize:13,fontWeight:d.ativo?700:400,color:d.ativo?T2.onSurface:T2.onSurfaceLow,minWidth:70}}>{DIAS_SEMANA[i]}</span>
+                </div>
+                {d.ativo
+                  ?<div style={{display:'flex',alignItems:'center',gap:8,flex:1}}>
+                    <div>
+                      <div style={{fontSize:9,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',color:T2.primary,marginBottom:4}}>Abertura</div>
+                      <select value={d.ini} onChange={e=>setDia(key,'ini',e.target.value)} className="sel" style={{width:90,padding:'8px 10px'}}>
+                        {HORAS.map(h=><option key={h}>{h}</option>)}
+                      </select>
+                    </div>
+                    <span style={{color:T2.onSurfaceLow,marginTop:16,fontWeight:600}}>até</span>
+                    <div>
+                      <div style={{fontSize:9,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',color:T2.primary,marginBottom:4}}>Fechamento</div>
+                      <select value={d.fim} onChange={e=>setDia(key,'fim',e.target.value)} className="sel" style={{width:90,padding:'8px 10px'}}>
+                        {HORAS.filter(h=>h>d.ini).map(h=><option key={h}>{h}</option>)}
+                      </select>
+                    </div>
+                    <div style={{marginLeft:'auto',padding:'6px 12px',background:T2.primaryPale,borderRadius:8,fontSize:11,fontWeight:600,color:T2.primary,whiteSpace:'nowrap'}}>
+                      {d.ini} – {d.fim}
+                    </div>
+                  </div>
+                  :<span style={{fontSize:12,color:T2.onSurfaceLow,fontStyle:'italic'}}>Fechado</span>
+                }
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Resumo visual */}
+      <div style={{background:'white',borderRadius:20,overflow:'hidden',marginBottom:16}}>
+        <div style={{padding:'14px 20px',borderBottom:`1px solid ${T2.surfaceLow}`}}>
+          <span style={{fontFamily:'Noto Serif,serif',fontSize:15,fontWeight:600,color:T2.onSurface}}>Resumo de Funcionamento</span>
+        </div>
+        <div style={{padding:'14px 20px',display:'flex',flexWrap:'wrap',gap:8}}>
+          {DIAS_KEY.map((key,i)=>{
+            const d=cfg[key]||{ativo:false}
+            return(
+              <div key={key} style={{
+                padding:'8px 12px',borderRadius:10,fontSize:11,fontWeight:600,
+                background:d.ativo?T2.primaryPale:T2.surfaceLow,
+                color:d.ativo?T2.primary:T2.onSurfaceLow,
+              }}>
+                <div style={{marginBottom:2}}>{DIAS_SEMANA[i].slice(0,3)}</div>
+                {d.ativo
+                  ?<div style={{fontSize:10,fontWeight:400}}>{d.ini}–{d.fim}</div>
+                  :<div style={{fontSize:10,fontWeight:400,fontStyle:'italic'}}>Fechado</div>
+                }
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      <button onClick={salvar} className="btn btn-primary" style={{width:'100%',justifyContent:'center',padding:14,fontSize:13}}>
+        {saved?'✓ Configurações Salvas!':'Salvar Configurações'}
+      </button>
+      <div style={{marginTop:10,fontSize:11,color:T2.onSurfaceLow,textAlign:'center'}}>
+        As configurações ficam salvas no navegador deste dispositivo.
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════
 // COMPONENTE ALTERAR SENHA ADMIN
 // ══════════════════════════════════════════════════════
 function AdminSenhaComp({toast2}){
@@ -2203,3 +2368,4 @@ export default function Joudat(){
   if(mode==='cliente')  return <PortalCliente cliente={cliData} onLogout={()=>{setMode(null);setCliData(null)}}/>
   return <Login onAdmin={()=>setMode('admin')} onProf={p=>{setProfData(p);setMode('prof')}} onCliente={c=>{setCliData(c);setMode('cliente')}}/>
 }
+             
