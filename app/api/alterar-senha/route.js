@@ -1,10 +1,12 @@
 import { createClient } from '@supabase/supabase-js'
 import bcrypt from 'bcryptjs'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-)
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_KEY
+  )
+}
 
 export async function POST(req) {
   const { tipo, id, senhaAtual, senhaNova } = await req.json()
@@ -17,7 +19,9 @@ export async function POST(req) {
     return Response.json({ ok: false, erro: 'Nova senha deve ter pelo menos 6 caracteres' }, { status: 400 })
   }
 
-  // ── PROFISSIONAL ───────────────────────────────────
+  const supabase = getSupabase()
+
+  // PROFISSIONAL
   if (tipo === 'profissional') {
     const { data: prof } = await supabase
       .from('salon_professionals')
@@ -27,7 +31,6 @@ export async function POST(req) {
 
     if (!prof) return Response.json({ ok: false, erro: 'Profissional não encontrado' }, { status: 404 })
 
-    // Verifica senha atual
     let ok = false
     if (prof.senha_hash) {
       ok = await bcrypt.compare(senhaAtual, prof.senha_hash)
@@ -36,17 +39,16 @@ export async function POST(req) {
     }
     if (!ok) return Response.json({ ok: false, erro: 'Senha atual incorreta' }, { status: 401 })
 
-    // Gera hash da nova senha
     const novoHash = await bcrypt.hash(senhaNova, 12)
     await supabase
       .from('salon_professionals')
-      .update({ senha_hash: novoHash, senha: null }) // remove texto puro
+      .update({ senha_hash: novoHash, senha: null })
       .eq('id', id)
 
     return Response.json({ ok: true })
   }
 
-  // ── CLIENTE ────────────────────────────────────────
+  // CLIENTE
   if (tipo === 'cliente') {
     const { data: cli } = await supabase
       .from('salon_clients')
