@@ -1,18 +1,17 @@
 import { createClient } from '@supabase/supabase-js'
 import bcrypt from 'bcryptjs'
 
-// Usa a chave SERVICE (secreta, só no servidor) para bypassar RLS
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-)
-
 const ADMIN_USER = 'Alexandre'
-
-// Controle de tentativas por IP (em memória — reseta com deploy)
-const tentativas = {}
 const MAX_TENT = 5
-const BLOQUEIO_MS = 15 * 60 * 1000 // 15 minutos
+const BLOQUEIO_MS = 15 * 60 * 1000
+const tentativas = {}
+
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_KEY
+  )
+}
 
 function getIP(req) {
   return req.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown'
@@ -22,9 +21,7 @@ function verificaBloqueio(ip) {
   const t = tentativas[ip]
   if (!t) return false
   if (t.bloqueadoAte && Date.now() < t.bloqueadoAte) return true
-  if (t.bloqueadoAte && Date.now() >= t.bloqueadoAte) {
-    delete tentativas[ip] // desbloqueia
-  }
+  if (t.bloqueadoAte && Date.now() >= t.bloqueadoAte) delete tentativas[ip]
   return false
 }
 
@@ -40,10 +37,13 @@ function resetaTentativas(ip) {
   delete tentativas[ip]
 }
 
+function restantes(ip) {
+  return MAX_TENT - (tentativas[ip]?.count || 0)
+}
+
 export async function POST(req) {
   const ip = getIP(req)
 
-  // Verifica bloqueio por tentativas
   if (verificaBloqueio(ip)) {
     return Response.json({
       ok: false,
@@ -57,11 +57,11 @@ export async function POST(req) {
     return Response.json({ ok: false, erro: 'Usuário e senha são obrigatórios' }, { status: 400 })
   }
 
-  // ── LOGIN ADMIN ────────────────────────────────────
+  const supabase = getSupabase()
+
+  // ── ADMIN ──────────────────────────────────────────
   if (usuario.trim() === ADMIN_USER) {
     const senhaAdmin = process.env.ADMIN_SENHA || '123456'
-    // Admin ainda usa comparação direta (pode migrar para hash depois)
-    // Compara com hash se existir, senão compara direto
     let ok = false
     if (senhaAdmin.startsWith('$2b$') || senhaAdmin.startsWith('$2a$')) {
       ok = await bcrypt.compare(senha, senhaAdmin)
@@ -70,57 +70,51 @@ export async function POST(req) {
     }
     if (!ok) {
       registraFalha(ip)
-      const restantes = MAX_TENT - (tentativas[ip]?.count || 0)
+      const r = restantes(ip)
       return Response.json({
         ok: false,
-        erro: restantes > 0
-          ? `Senha incorreta. ${restantes} tentativa(s) restante(s).`
-          : 'Conta bloqueada por 15 minutos.'
+        erro: r > 0 ? `Senha incorreta. ${r} tentativa(s) restante(s).` : 'Conta bloqueada por 15 minutos.'
       }, { status: 401 })
     }
     resetaTentativas(ip)
     return Response.json({ ok: true, perfil: 'admin' })
   }
 
-  // ── LOGIN PROFISSIONAL ─────────────────────────────
-  const { data: prof, error: profErr } = await supabase
+  // ── PROFISSIONAL ───────────────────────────────────
+  const { data: prof } = await supabase
     .from('salon_professionals')
     .select('*')
     .ilike('full_name', usuario.trim())
     .eq('active', true)
     .single()
 
-  if (!profErr && prof) {
+  if (prof) {
     let ok = false
     if (prof.senha_hash) {
-      // Usa bcrypt se já tiver hash
       ok = await bcrypt.compare(senha, prof.senha_hash)
     } else {
-      // Fallback para senha em texto (migração gradual)
       ok = senha === (prof.senha || '123456')
     }
     if (!ok) {
       registraFalha(ip)
-      const restantes = MAX_TENT - (tentativas[ip]?.count || 0)
+      const r = restantes(ip)
       return Response.json({
         ok: false,
-        erro: restantes > 0
-          ? `Senha incorreta. ${restantes} tentativa(s) restante(s).`
-          : 'Conta bloqueada por 15 minutos.'
+        erro: r > 0 ? `Senha incorreta. ${r} tentativa(s) restante(s).` : 'Conta bloqueada por 15 minutos.'
       }, { status: 401 })
     }
     resetaTentativas(ip)
     return Response.json({ ok: true, perfil: 'profissional', dados: prof })
   }
 
-  // ── LOGIN CLIENTE ──────────────────────────────────
-  const { data: cli, error: cliErr } = await supabase
+  // ── CLIENTE ────────────────────────────────────────
+  const { data: cli } = await supabase
     .from('salon_clients')
     .select('*')
     .ilike('full_name', usuario.trim())
     .single()
 
-  if (!cliErr && cli) {
+  if (cli) {
     let ok = false
     if (cli.senha_hash) {
       ok = await bcrypt.compare(senha, cli.senha_hash)
@@ -129,19 +123,16 @@ export async function POST(req) {
     }
     if (!ok) {
       registraFalha(ip)
-      const restantes = MAX_TENT - (tentativas[ip]?.count || 0)
+      const r = restantes(ip)
       return Response.json({
         ok: false,
-        erro: restantes > 0
-          ? `Senha incorreta. ${restantes} tentativa(s) restante(s).`
-          : 'Conta bloqueada por 15 minutos.'
+        erro: r > 0 ? `Senha incorreta. ${r} tentativa(s) restante(s).` : 'Conta bloqueada por 15 minutos.'
       }, { status: 401 })
     }
     resetaTentativas(ip)
     return Response.json({ ok: true, perfil: 'cliente', dados: cli })
   }
 
-  // Usuário não encontrado
   registraFalha(ip)
   return Response.json({ ok: false, erro: 'Usuário não encontrado' }, { status: 401 })
 }
