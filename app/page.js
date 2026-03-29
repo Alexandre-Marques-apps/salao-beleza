@@ -1,4 +1,4 @@
- 'use client'
+'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
@@ -2360,12 +2360,50 @@ function AdminSenhaComp({toast2}){
 // ROOT — login unificado
 // ══════════════════════════════════════════════════════
 export default function Joudat(){
-  const [mode,setMode]=useState(null)
-  const [profData,setProfData]=useState(null)
-  const [cliData,setCliData]=useState(null)
-  if(mode==='admin')    return <Admin onLogout={()=>setMode(null)}/>
-  if(mode==='prof')     return <ProfPanel prof={profData} onLogout={()=>{setMode(null);setProfData(null)}}/>
-  if(mode==='cliente')  return <PortalCliente cliente={cliData} onLogout={()=>{setMode(null);setCliData(null)}}/>
-  return <Login onAdmin={()=>setMode('admin')} onProf={p=>{setProfData(p);setMode('prof')}} onCliente={c=>{setCliData(c);setMode('cliente')}}/>
+  // Restaura sessão do localStorage ao carregar
+  const [mode,setMode]=useState(()=>{
+    try{ return localStorage.getItem('joudat_mode')||null }catch{return null}
+  })
+  const [profData,setProfData]=useState(()=>{
+    try{
+      const d=localStorage.getItem('joudat_prof')
+      return d?JSON.parse(d):null
+    }catch{return null}
+  })
+  const [cliData,setCliData]=useState(()=>{
+    try{
+      const d=localStorage.getItem('joudat_cli')
+      return d?JSON.parse(d):null
+    }catch{return null}
+  })
+
+  function loginAdmin(){
+    localStorage.setItem('joudat_mode','admin')
+    localStorage.removeItem('joudat_prof')
+    localStorage.removeItem('joudat_cli')
+    setMode('admin')
+  }
+  function loginProf(p){
+    localStorage.setItem('joudat_mode','prof')
+    localStorage.setItem('joudat_prof',JSON.stringify(p))
+    localStorage.removeItem('joudat_cli')
+    setProfData(p);setMode('prof')
+  }
+  function loginCli(c){
+    localStorage.setItem('joudat_mode','cliente')
+    localStorage.setItem('joudat_cli',JSON.stringify(c))
+    localStorage.removeItem('joudat_prof')
+    setCliData(c);setMode('cliente')
+  }
+  function logout(){
+    localStorage.removeItem('joudat_mode')
+    localStorage.removeItem('joudat_prof')
+    localStorage.removeItem('joudat_cli')
+    setMode(null);setProfData(null);setCliData(null)
+  }
+
+  if(mode==='admin')   return <Admin onLogout={logout}/>
+  if(mode==='prof'&&profData)   return <ProfPanel prof={profData} onLogout={logout}/>
+  if(mode==='cliente'&&cliData) return <PortalCliente cliente={cliData} onLogout={logout}/>
+  return <Login onAdmin={loginAdmin} onProf={loginProf} onCliente={loginCli}/>
 }
-   
