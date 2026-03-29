@@ -270,22 +270,22 @@ function Login({onAdmin,onProf,onCliente}){
     if(!u.trim()){setErr('Informe seu nome');return}
     if(!p){setErr('Informe sua senha');return}
     setLd(true);setErr('')
-    // verifica senha do admin
-    const adminSenha=typeof window!=='undefined'?(localStorage.getItem('admin_senha')||ADMIN_PASS):ADMIN_PASS
-    if(u.trim()===ADMIN&&p===adminSenha){setLd(false);onAdmin();return}
-    // verifica profissional
-    const{data:profData,error:profErr}=await supabase.from('salon_professionals').select('*').ilike('full_name',u.trim()).eq('active',true).single()
-    if(!profErr&&profData){
+    try{
+      const res=await fetch('/api/login',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({usuario:u.trim(),senha:p})
+      })
+      const json=await res.json()
       setLd(false)
-      if(p!==(profData.senha||'123456')){setErr('Senha incorreta');return}
-      onProf(profData);return
+      if(!json.ok){setErr(json.erro||'Erro ao fazer login');return}
+      if(json.perfil==='admin'){onAdmin();return}
+      if(json.perfil==='profissional'){onProf(json.dados);return}
+      if(json.perfil==='cliente'){onCliente(json.dados);return}
+    }catch(e){
+      setLd(false)
+      setErr('Erro de conexão. Tente novamente.')
     }
-    // verifica cliente
-    const{data:cliData,error:cliErr}=await supabase.from('salon_clients').select('*').ilike('full_name',u.trim()).single()
-    setLd(false)
-    if(cliErr||!cliData){setErr('Usuário não encontrado');return}
-    if(p!==(cliData.senha||'1234')){setErr('Senha incorreta');return}
-    onCliente(cliData)
   }
 
   return(
@@ -1686,14 +1686,19 @@ function ProfPanel({prof,onLogout}){
   async function alterarSenha(){
     setSenhaErr('');setSenhaOk('')
     if(!senhaAtual){setSenhaErr('Informe a senha atual');return}
-    if(senhaAtual!==(prof.senha||'123456')){setSenhaErr('Senha atual incorreta');return}
-    if(!senhaNova||senhaNova.length<4){setSenhaErr('Nova senha deve ter pelo menos 4 caracteres');return}
+    if(!senhaNova||senhaNova.length<6){setSenhaErr('Nova senha deve ter pelo menos 6 caracteres');return}
     if(senhaNova!==senhaConf){setSenhaErr('As senhas não coincidem');return}
-    const{error}=await supabase.from('salon_professionals').update({senha:senhaNova}).eq('id',prof.id)
-    if(error){setSenhaErr('Erro: '+error.message);return}
-    prof.senha=senhaNova
-    setSenhaOk('✅ Senha alterada com sucesso!')
-    setSenhaAtual('');setSenhaNova('');setSenhaConf('')
+    try{
+      const res=await fetch('/api/alterar-senha',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({tipo:'profissional',id:prof.id,senhaAtual,senhaNova})
+      })
+      const json=await res.json()
+      if(!json.ok){setSenhaErr(json.erro||'Erro ao alterar');return}
+      setSenhaOk('✅ Senha alterada com sucesso!')
+      setSenhaAtual('');setSenhaNova('');setSenhaConf('')
+    }catch(e){setSenhaErr('Erro de conexão. Tente novamente.')}
   }
 
   // ── NOTIFICAÇÕES ─────────────────────────────────────
@@ -2006,14 +2011,20 @@ function AlterarSenhaCli({cliente}){
 
   async function salvar(){
     setErr('');setOk('')
-    if(senhaAtual!==(cliente.senha||'1234')){setErr('Senha atual incorreta');return}
-    if(!senhaNova||senhaNova.length<4){setErr('Nova senha deve ter pelo menos 4 caracteres');return}
+    if(!senhaAtual){setErr('Informe a senha atual');return}
+    if(!senhaNova||senhaNova.length<6){setErr('Nova senha deve ter pelo menos 6 caracteres');return}
     if(senhaNova!==senhaConf){setErr('As senhas não coincidem');return}
-    const{error}=await supabase.from('salon_clients').update({senha:senhaNova}).eq('id',cliente.id)
-    if(error){setErr('Erro: '+error.message);return}
-    cliente.senha=senhaNova
-    setOk('✅ Senha alterada com sucesso!')
-    setSenhaAtual('');setSenhaNova('');setSenhaConf('')
+    try{
+      const res=await fetch('/api/alterar-senha',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({tipo:'cliente',id:cliente.id,senhaAtual,senhaNova})
+      })
+      const json=await res.json()
+      if(!json.ok){setErr(json.erro||'Erro ao alterar');return}
+      setOk('✅ Senha alterada com sucesso!')
+      setSenhaAtual('');setSenhaNova('');setSenhaConf('')
+    }catch(e){setErr('Erro de conexão. Tente novamente.')}
   }
 
   return(
