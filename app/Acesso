@@ -1081,8 +1081,12 @@ function Admin({onLogout}){
                         <td>{c.visits||0}</td>
                         <td style={{fontWeight:600,color:T.primary}}>{fmtCurrency(c.total_spent)}</td>
                         <td>
-                          <div style={{display:'flex',gap:6}}>
+                          <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
                             <button className="btn btn-ghost btn-sm" onClick={()=>openM('cli',c)}>Editar</button>
+                            <button className="btn btn-sm" style={{background:T.amberPale,color:T.amber,border:'none',borderRadius:7,fontFamily:'Manrope',fontSize:11,fontWeight:600,cursor:'pointer',padding:'7px 10px'}}
+                              onClick={()=>{if(window.confirm(`Resetar senha de ${c.full_name} para 1234?`))supabase.from('salon_clients').update({senha:'1234'}).eq('id',c.id).then(()=>toast2(`Senha de ${c.full_name} resetada para 1234!`))}}>
+                              🔑 Senha
+                            </button>
                             <button className="btn btn-danger btn-sm" onClick={()=>{if(window.confirm('Excluir?'))supabase.from('salon_clients').delete().eq('id',c.id).then(()=>{toast2('Removido!');load()})}}>✕</button>
                           </div>
                         </td>
@@ -1812,6 +1816,46 @@ function ProfPanel({prof,onLogout}){
 }
 
 // ══════════════════════════════════════════════════════
+// COMPONENTE ALTERAR SENHA CLIENTE
+// ══════════════════════════════════════════════════════
+function AlterarSenhaCli({cliente}){
+  const [senhaAtual,setSenhaAtual]=useState('')
+  const [senhaNova,setSenhaNova]=useState('')
+  const [senhaConf,setSenhaConf]=useState('')
+  const [err,setErr]=useState('')
+  const [ok,setOk]=useState('')
+
+  async function salvar(){
+    setErr('');setOk('')
+    if(senhaAtual!==(cliente.senha||'1234')){setErr('Senha atual incorreta');return}
+    if(!senhaNova||senhaNova.length<4){setErr('Nova senha deve ter pelo menos 4 caracteres');return}
+    if(senhaNova!==senhaConf){setErr('As senhas não coincidem');return}
+    const{error}=await supabase.from('salon_clients').update({senha:senhaNova}).eq('id',cliente.id)
+    if(error){setErr('Erro: '+error.message);return}
+    cliente.senha=senhaNova
+    setOk('✅ Senha alterada com sucesso!')
+    setSenhaAtual('');setSenhaNova('');setSenhaConf('')
+  }
+
+  return(
+    <>
+      <label className="lbl">Senha atual *</label>
+      <input type="password" value={senhaAtual} onChange={e=>{setSenhaAtual(e.target.value);setErr('');setOk('')}} placeholder="Senha atual" className="inp"/>
+      <label className="lbl">Nova senha *</label>
+      <input type="password" value={senhaNova} onChange={e=>{setSenhaNova(e.target.value);setErr('');setOk('')}} placeholder="Mínimo 4 caracteres" className="inp"/>
+      <label className="lbl">Confirmar nova senha *</label>
+      <input type="password" value={senhaConf} onChange={e=>{setSenhaConf(e.target.value);setErr('');setOk('')}} onKeyDown={e=>e.key==='Enter'&&salvar()} placeholder="Repita a nova senha" className="inp"/>
+      {err&&<div className="alert alert-danger" style={{marginTop:10}}>{err}</div>}
+      {ok&&<div className="alert alert-success" style={{marginTop:10}}>{ok}</div>}
+      <button className="btn btn-primary" style={{width:'100%',marginTop:16,justifyContent:'center'}} onClick={salvar}>
+        Salvar Nova Senha
+      </button>
+      <div style={{marginTop:10,fontSize:11,color:'#7a7a6a',textAlign:'center'}}>Senha padrão: 1234</div>
+    </>
+  )
+}
+
+// ══════════════════════════════════════════════════════
 // PORTAL DO CLIENTE
 // ══════════════════════════════════════════════════════
 function PortalCliente({cliente,onLogout}){
@@ -1940,8 +1984,16 @@ function PortalCliente({cliente,onLogout}){
           </div>
         </div>
 
-        {/* Minhas reservas */}
+        {/* Alterar senha */}
         <div className="card au2">
+          <div className="card-hd"><span className="ch">🔑 Alterar Minha Senha</span></div>
+          <div style={{padding:'0 20px 20px'}}>
+            <AlterarSenhaCli cliente={cliente}/>
+          </div>
+        </div>
+
+        {/* Minhas reservas */}
+        <div className="card au3">
           <div className="card-hd"><span className="ch">Minhas Reservas</span></div>
           <div style={{padding:'0 14px 14px'}}>
             {minhasAgs.length===0
