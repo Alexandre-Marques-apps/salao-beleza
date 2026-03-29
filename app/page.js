@@ -1492,31 +1492,41 @@ function ProfPanel({prof,onLogout}){
     if(!dmy)return SLOTS
     const hi=(prof.schedule_start||'08:00').slice(0,5)
     const hf=(prof.schedule_end||'18:00').slice(0,5)
-    const isCabelereiro=(prof.tipo||'cabelereiro')==='cabelereiro'
+    // cabelereiro: até 2 simultâneos | manicure/sobrancelha: 1 por vez
+    const maxSim=prof.tipo==='cabelereiro'?2:1
     const srvNow=agSrvs.find(x=>x.name===agForm.service_name)
     const durNow=Number(srvNow?.duration_min)||30
+    const taken=rows
+      .filter(a=>a.dmy===dmy&&a.status!=='cancelled')
+      .map(a=>{
+        const s=agSrvs.find(x=>x.name===a.srvName)
+        const dur=Number(a.durMin)||Number(s?.duration_min)||30
+        return{ini:toMin(a.time),fim:toMin(a.time)+dur}
+      })
     return SLOTS.filter(h=>{
       if(h<hi||h>hf)return false
       if(!isFuture(dmy,h))return false
       const ini=toMin(h),fim=ini+durNow
       if(fim>toMin(hf)+1)return false
-      // Manicure: bloqueia sobreposição
-      if(!isCabelereiro){
-        const taken=rows.filter(a=>a.dmy===dmy&&a.status!=='cancelled')
-          .map(a=>{const s=agSrvs.find(x=>x.name===a.srvName);const dur=Number(a.durMin)||Number(s?.duration_min)||30;return{ini:toMin(a.time),fim:toMin(a.time)+dur}})
-        if(taken.some(t=>ini<t.fim&&fim>t.ini))return false
-      }
-      // Cabelereiro: apenas bloqueia horário exato
-      if(isCabelereiro){
-        if(rows.filter(a=>a.dmy===dmy&&a.status!=='cancelled').map(a=>a.time).includes(h))return false
-      }
+      // conta sobreposições no slot
+      const overlapping=taken.filter(t=>ini<t.fim&&fim>t.ini).length
+      if(overlapping>=maxSim)return false
       return true
     })
   }
 
-  async function saveAgProf(){
+  const [agLoading,setAgLoading]=useState(false)
+  const [agConfirm,setAgConfirm]=useState(false)
+
+  function confirmarAgProf(){
     setAgErr('')
     if(!agForm.client_name||!agForm.service_name||!agForm.dmy||!agForm.time){setAgErr('Preencha todos os campos');return}
+    setAgConfirm(true) // abre popup de confirmação
+  }
+
+  async function saveAgProf(){
+    setAgConfirm(false)
+    setAgLoading(true)
     const s=agSrvs.find(x=>x.name===agForm.service_name)
     const{error}=await supabase.from('salon_bookings').insert({
       client_name:agForm.client_name,
@@ -1529,8 +1539,11 @@ function ProfPanel({prof,onLogout}){
       service_price:s?.price||0,
       duration_min:s?.duration_min||30,
     })
+    setAgLoading(false)
     if(error){setAgErr('Erro: '+error.message);return}
-    shToast('Agendamento criado!');setAgForm({client_name:'',service_name:'',dmy:todayStr(),time:''});load()
+    shToast('Agendamento criado! ✓')
+    setAgForm({client_name:'',service_name:'',dmy:todayStr(),time:''})
+    load()
   }
 
   // ── ALTERAR SENHA ────────────────────────────────────
@@ -1685,8 +1698,12 @@ function ProfPanel({prof,onLogout}){
                   {freeSlotsProf(agForm.dmy).map(h=><option key={h} value={h}>{h}</option>)}
                 </Sel>
                 {agErr&&<Alert type="danger" c={agErr}/>}
-                <button className="btn btn-primary" style={{width:'100%',marginTop:20,justifyContent:'center'}} onClick={saveAgProf}>
-                  Confirmar Agendamento
+                {agErr&&<Alert type="danger" c={agErr}/>}
+                <button className="btn btn-primary" 
+                  style={{width:'100%',marginTop:18,justifyContent:'center',opacity:agLoading?.7:1,cursor:agLoading?'not-allowed':'pointer'}} 
+                  onClick={confirmarAgProf}
+                  disabled={agLoading}>
+                  {agLoading?'Salvando…':'Confirmar Agendamento'}
                 </button>
               </>)}
 
@@ -1779,6 +1796,37 @@ function ProfPanel({prof,onLogout}){
           </div>
         </div>
       </div>
+
+      {/* MODAL CONFIRMAÇÃO AGENDAMENTO */}
+      {agConfirm&&(()=>{
+        const s=agSrvs.find(x=>x.name===agForm.service_name)
+        return(
+          <Modal title="Confirmar Agendamento" onClose={()=>setAgConfirm(false)}>
+            <div style={{background:T.primaryPale,borderRadius:14,padding:'16px',marginBottom:4}}>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                {[
+                  ['Cliente',agForm.client_name],
+                  ['Serviço',agForm.service_name],
+                  ['Data',agForm.dmy],
+                  ['Horário',agForm.time],
+                  ['Duração',`${s?.duration_min||30} min`],
+                  ['Valor',fmtCurrency(s?.price||0)],
+                ].map(([l,v])=>(
+                  <div key={l}>
+                    <div style={{fontSize:9,fontWeight:700,letterSpacing:2,textTransform:'uppercase',color:T.primary,opacity:.7,marginBottom:3}}>{l}</div>
+                    <div style={{fontSize:13,fontWeight:600,color:T.onSurface}}>{v}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <Alert type="info" c="Verifique os dados antes de confirmar. Após salvo, o agendamento aparece na grade do admin."/>
+            <div style={{display:'flex',gap:10,marginTop:18}}>
+              <button className="btn btn-primary" style={{flex:1}} onClick={saveAgProf}>✓ Confirmar</button>
+              <button className="btn btn-ghost" onClick={()=>setAgConfirm(false)}>Voltar</button>
+            </div>
+          </Modal>
+        )
+      })()}
 
       {modal==='fin'&&(
         <Modal title="Finalizar Atendimento" onClose={closeM}>
