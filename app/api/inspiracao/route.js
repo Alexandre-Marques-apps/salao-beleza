@@ -1,40 +1,44 @@
 export async function POST(req){
   try{
     const {descricao,fotoBase64}=await req.json()
-    const key=process.env.GOOGLE_API_KEY
-    if(!key) return Response.json({ok:false,error:'Chave não configurada'})
 
-    const prompt=`Crie uma foto profissional de nail art mostrando: ${descricao||'unhas elegantes'}. Close-up nas unhas, alta definição, fundo neutro, iluminação de estúdio, resultado final impecável.`
+    const prompt=`professional nail art photo, ${descricao||'elegant nails'}, close-up shot, studio lighting, high resolution, sharp focus, beautiful manicure, neutral background`
 
-    const parts=[]
-    if(fotoBase64) parts.push({inline_data:{mime_type:'image/jpeg',data:fotoBase64}})
-    parts.push({text:prompt})
-
+    // Hugging Face - FLUX.1-schnell (gratuito, sem chave)
     const res=await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${key}`,
+      'https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell',
       {
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({
-          contents:[{parts}],
-          generationConfig:{responseModalities:['IMAGE','TEXT']}
+          inputs:prompt,
+          parameters:{
+            width:512,
+            height:512,
+            num_inference_steps:4,
+            guidance_scale:0
+          }
         })
       }
     )
-    const data=await res.json()
 
-    // Extrai imagem da resposta
-    const imgPart=data.candidates?.[0]?.content?.parts?.find(p=>p.inline_data)
-    if(imgPart?.inline_data){
-      const {mime_type,data:b64}=imgPart.inline_data
-      return Response.json({ok:true,imageData:`data:${mime_type};base64,${b64}`,prompt})
-    }
+    if(!res.ok) throw new Error('HF error: '+res.status)
 
-    // Fallback Pollinations com modelo flux-realism
-    const url=`https://image.pollinations.ai/prompt/${encodeURIComponent(`nail art professional photo, ${descricao}, close up, high quality, studio lighting, realistic`)}?model=flux-realism&width=512&height=512&nologo=true&seed=${Date.now()}`
-    return Response.json({ok:true,imageData:url,prompt})
+    // Resposta é binário (imagem direta)
+    const buffer=await res.arrayBuffer()
+    const b64=Buffer.from(buffer).toString('base64')
+    const mime=res.headers.get('content-type')||'image/jpeg'
+
+    return Response.json({ok:true,imageData:`data:${mime};base64,${b64}`,prompt})
 
   }catch(e){
-    return Response.json({ok:false,error:e.message})
+    // Fallback Pollinations flux-realism
+    try{
+      const {descricao:d}=await req.clone().json().catch(()=>({}))
+      const url=`https://image.pollinations.ai/prompt/${encodeURIComponent(`professional nail art, ${d||'elegant nails'}, close up, studio lighting, high quality`)}?model=flux-realism&width=512&height=512&nologo=true&seed=${Date.now()}`
+      return Response.json({ok:true,imageData:url,prompt:''})
+    }catch{
+      return Response.json({ok:false,error:e.message})
+    }
   }
 }
