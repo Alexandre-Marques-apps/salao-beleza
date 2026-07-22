@@ -1,11 +1,45 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
+// ── Proxy de dados ─────────────────────────────────────
+// Imita a fatia da API do Supabase que o app usa, mas roteia todas as
+// operações para o gateway server-side /api/data (service_role). A anon key
+// não vai mais para o navegador; com RLS ligado, este é o único acesso ao banco.
+async function execQuery(state) {
+  const empty = state.single ? null : []
+  try {
+    const res = await fetch('/api/data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(state),
+    })
+    const j = await res.json()
+    return {
+      data: j.ok ? (j.data ?? empty) : empty,
+      error: j.ok ? null : { message: j.erro || 'Erro' },
+    }
+  } catch (e) {
+    return { data: empty, error: { message: e.message || 'Erro de conexão' } }
+  }
+}
+function makeQuery(table) {
+  const state = { op: 'select', table, columns: '*', filters: [], orders: [], single: false, payload: null }
+  const b = {
+    select(columns = '*') { state.op = 'select'; state.columns = columns; return b },
+    insert(payload) { state.op = 'insert'; state.payload = payload; return b },
+    update(payload) { state.op = 'update'; state.payload = payload; return b },
+    upsert(payload) { state.op = 'upsert'; state.payload = payload; return b },
+    delete() { state.op = 'delete'; return b },
+    eq(col, val) { state.filters.push(['eq', col, val]); return b },
+    neq(col, val) { state.filters.push(['neq', col, val]); return b },
+    ilike(col, val) { state.filters.push(['ilike', col, val]); return b },
+    order(col, opt) { state.orders.push([col, opt]); return b },
+    single() { state.single = true; return b },
+    then(resolve, reject) { return execQuery(state).then(resolve, reject) },
+  }
+  return b
+}
+const supabase = { from: (t) => makeQuery(t) }
 
 const VERSION = 'v1.0'
 
