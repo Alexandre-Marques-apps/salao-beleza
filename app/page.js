@@ -35,11 +35,37 @@ const DEFAULT_FUNC = {
   sex:{ativo:true,ini:'08:00',fim:'18:00'},sab:{ativo:true,ini:'08:00',fim:'13:00'},
   dom:{ativo:false,ini:'08:00',fim:'12:00'}
 }
+// Cache em memória do funcionamento — hidratado a partir do banco (salon_settings)
+// e consumido de forma síncrona pelas funções de cálculo de slots.
+let _funcCache = null
 function getFuncionamento(){
+  if(_funcCache) return _funcCache
   try{
     const s=typeof window!=='undefined'?localStorage.getItem('joudat_funcionamento'):null
     return s?JSON.parse(s):DEFAULT_FUNC
   }catch{return DEFAULT_FUNC}
+}
+// Carrega a configuração do banco (fonte da verdade, compartilhada entre dispositivos).
+// Cai para localStorage/DEFAULT_FUNC se o banco estiver indisponível ou sem registro.
+async function carregarFuncionamento(){
+  try{
+    const {data}=await supabase.from('salon_settings').select('value').eq('key','funcionamento').single()
+    if(data?.value){
+      const cfg=JSON.parse(data.value)
+      _funcCache=cfg
+      if(typeof window!=='undefined') localStorage.setItem('joudat_funcionamento',data.value)
+      return cfg
+    }
+  }catch{}
+  return getFuncionamento()
+}
+// Persiste a configuração no banco e atualiza cache + localStorage.
+async function salvarFuncionamento(cfg){
+  const value=JSON.stringify(cfg)
+  _funcCache=cfg
+  if(typeof window!=='undefined') localStorage.setItem('joudat_funcionamento',value)
+  const {error}=await supabase.from('salon_settings').upsert({key:'funcionamento',value,updated_at:new Date().toISOString()})
+  return !error
 }
 // Retorna true se a data (dd/mm/yyyy) está dentro do funcionamento do salão
 function isDiaAberto(dmy){
@@ -387,6 +413,7 @@ function Admin({onLogout,salonName='Joudat Salon'}){
       supabase.from('service_categories').select('*').order('name'),
       supabase.from('salon_blocks').select('*').order('block_date').order('start_time'),
     ])
+    await carregarFuncionamento()
     setAgs(r1.data||[]);setClients(r2.data||[]);setProfs(r3.data||[]);setSrvs(r4.data||[]);setCats(r5.data||[]);setBlocks(r6.data||[])
     setLd(false)
   },[])
@@ -1559,6 +1586,7 @@ function ProfPanel({prof,onLogout,salonName='Joudat Salon'}){
       supabase.from('salon_bookings').select('*,created_at').eq('professional_name',prof.full_name).order('booking_date').order('start_time'),
       supabase.from('salon_blocks').select('*').eq('professional_name',prof.full_name).order('block_date').order('start_time'),
     ])
+    await carregarFuncionamento()
     setAgs(r1.data||[]);setBlocks(r2.data||[])
     setLd(false)
   },[prof.full_name])
@@ -2587,8 +2615,10 @@ function PortalCliente({cliente,onLogout,salonName='Joudat Salon'}){
   const [showConfirm,setShowConfirm]=useState(false)
   const [fotoPopup,setFotoPopup]=useState(null)
   const fileRef=useRef(null)
+  const [,setFuncTick]=useState(0)
 
   useEffect(()=>{
+    carregarFuncionamento().then(()=>setFuncTick(t=>t+1))
     supabase.from('services').select('*').eq('active',true).order('name').then(({data})=>setSrvs(data||[]))
     supabase.from('salon_professionals').select('*').eq('active',true).order('full_name').then(({data})=>setProfs(data||[]))
     supabase.from('salon_bookings').select('*').eq('client_name',cliente.full_name).order('booking_date','desc').then(({data})=>setAgs(data||[]))
@@ -3006,21 +3036,31 @@ function FuncionamentoAdmin({toast2}){
   const [cfg,setCfg]=useState(()=>{
     try{
       const saved=localStorage.getItem('joudat_funcionamento')
-      return saved?JSON.parse(saved):defaultConfig
+      return saved?{...defaultConfig,...JSON.parse(saved)}:defaultConfig
     }catch{return defaultConfig}
   })
   const [saved,setSaved]=useState(false)
+  const [carregando,setCarregando]=useState(true)
+
+  // Carrega a configuração do banco (fonte da verdade entre dispositivos)
+  useEffect(()=>{
+    let vivo=true
+    carregarFuncionamento().then(remoto=>{
+      if(vivo&&remoto) setCfg(c=>({...defaultConfig,...c,...remoto}))
+    }).finally(()=>{ if(vivo) setCarregando(false) })
+    return()=>{ vivo=false }
+  },[])
 
   function setDia(key,field,val){
     setCfg(c=>({...c,[key]:{...c[key],[field]:val}}))
     setSaved(false)
   }
 
-  function salvar(){
-    localStorage.setItem('joudat_funcionamento',JSON.stringify(cfg))
+  async function salvar(){
+    const okSave=await salvarFuncionamento(cfg)
     window.dispatchEvent(new StorageEvent('storage',{key:'joudat_funcionamento',newValue:JSON.stringify(cfg)}))
     setSaved(true)
-    toast2('Configurações salvas!')
+    toast2(okSave?'Configurações salvas!':'Salvo no dispositivo (falha ao sincronizar com o banco).',okSave)
     setTimeout(()=>setSaved(false),3000)
   }
 
@@ -3134,11 +3174,11 @@ function FuncionamentoAdmin({toast2}){
         </div>
       </div>
 
-      <button onClick={salvar} className="btn btn-primary" style={{width:'100%',justifyContent:'center',padding:14,fontSize:13}}>
-        {saved?'✓ Configurações Salvas!':'Salvar Configurações'}
+      <button onClick={salvar} disabled={carregando} className="btn btn-primary" style={{width:'100%',justifyContent:'center',padding:14,fontSize:13,opacity:carregando?.6:1,cursor:carregando?'not-allowed':'pointer'}}>
+        {carregando?'Carregando…':saved?'✓ Configurações Salvas!':'Salvar Configurações'}
       </button>
       <div style={{marginTop:10,fontSize:11,color:T2.onSurfaceLow,textAlign:'center'}}>
-        As configurações ficam salvas no navegador deste dispositivo.
+        As configurações são salvas na nuvem e valem para todos os dispositivos e clientes.
       </div>
     </div>
   )
@@ -3204,6 +3244,7 @@ export default function Joudat(){
       const c=localStorage.getItem('joudat_funcionamento')
       if(c){const p=JSON.parse(c);if(p.nome)setSalonName(p.nome)}
     }catch{}
+    carregarFuncionamento().then(cfg=>{ if(cfg?.nome) setSalonName(cfg.nome) })
     function onStorage(e){
       if(e.key==='joudat_funcionamento'&&e.newValue){
         try{const c=JSON.parse(e.newValue);if(c.nome)setSalonName(c.nome)}catch{}
