@@ -7,8 +7,6 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 )
 
-const ADMIN = 'Alexandre'
-const ADMIN_PASS = '123456'
 const VERSION = 'v1.0'
 
 const SLOTS = [
