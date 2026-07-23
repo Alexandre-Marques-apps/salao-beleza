@@ -98,7 +98,7 @@ export async function POST(req) {
       }, { status: 401 })
     }
     resetaTentativas(ip)
-    return Response.json({ ok: true, perfil: 'admin' })
+    return Response.json({ ok: true, perfil: 'admin', nome: ADMIN_USER })
   }
 
   // ── PROFISSIONAL ───────────────────────────────────

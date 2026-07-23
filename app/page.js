@@ -370,7 +370,7 @@ function Login({onAdmin,onProf,onCliente,salonName='Morgane Faoli Nail Style'}){
       const json=await res.json()
       setLd(false)
       if(!json.ok){setErr(json.erro||'Usuário ou senha incorretos');return}
-      if(json.perfil==='admin'){onAdmin();return}
+      if(json.perfil==='admin'){onAdmin(json.nome||json.dados?.full_name||'Administrador');return}
       if(json.perfil==='profissional'){onProf(json.dados);return}
       if(json.perfil==='cliente'){onCliente(json.dados);return}
     }catch(e){setLd(false);setErr('Erro de conexão. Tente novamente.')}
@@ -469,7 +469,7 @@ function Login({onAdmin,onProf,onCliente,salonName='Morgane Faoli Nail Style'}){
 // ══════════════════════════════════════════════════════
 // ADMIN PANEL
 // ══════════════════════════════════════════════════════
-function Admin({onLogout,salonName='Morgane Faoli Nail Style'}){
+function Admin({onLogout,salonName='Morgane Faoli Nail Style',adminName='Administrador'}){
   const [tab,setTab]=useState('dashboard')
   const [sb,setSb]=useState(false)
   const [agDate,setAgDate]=useState(todayStr())
@@ -902,8 +902,8 @@ function Admin({onLogout,salonName='Morgane Faoli Nail Style'}){
           </button>
         </div>
         <div style={{padding:'14px 20px',borderTop:`1px solid ${T.surfaceLow}`,display:'flex',alignItems:'center',gap:10}}>
-          <div style={{width:32,height:32,borderRadius:'50%',background:`linear-gradient(135deg,${T.primaryLight},${T.primary})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,color:'white',flexShrink:0}}>A</div>
-          <div><div style={{fontSize:13,fontWeight:600,color:T.onSurface}}>Alexandre</div><div style={{fontSize:9,letterSpacing:2,color:T.onSurfaceLow,textTransform:'uppercase'}}>Administrador</div></div>
+          <div style={{width:32,height:32,borderRadius:'50%',background:`linear-gradient(135deg,${T.primaryLight},${T.primary})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,color:'white',flexShrink:0}}>{(adminName||'A').trim().charAt(0).toUpperCase()}</div>
+          <div><div style={{fontSize:13,fontWeight:600,color:T.onSurface}}>{adminName}</div><div style={{fontSize:9,letterSpacing:2,color:T.onSurfaceLow,textTransform:'uppercase'}}>Administrador</div></div>
           <button onClick={onLogout} style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',fontSize:11,color:T.onSurfaceLow,fontWeight:600}}>Sair</button>
         </div>
       </aside>
@@ -3359,12 +3359,17 @@ export default function App(){
       return d?JSON.parse(d):null
     }catch{return null}
   })
+  const [adminName,setAdminName]=useState(()=>{
+    try{ return localStorage.getItem('salao_admin_nome')||'Administrador' }catch{return 'Administrador'}
+  })
 
-  function loginAdmin(){
+  function loginAdmin(nome){
+    const nomeAdmin=(nome||'Administrador').trim()
     localStorage.setItem('salao_mode','admin')
+    localStorage.setItem('salao_admin_nome',nomeAdmin)
     localStorage.removeItem('salao_prof')
     localStorage.removeItem('salao_cli')
-    setMode('admin')
+    setAdminName(nomeAdmin);setMode('admin')
   }
   function loginProf(p){
     localStorage.setItem('salao_mode','prof')
@@ -3382,10 +3387,11 @@ export default function App(){
     localStorage.removeItem('salao_mode')
     localStorage.removeItem('salao_prof')
     localStorage.removeItem('salao_cli')
+    localStorage.removeItem('salao_admin_nome')
     setMode(null);setProfData(null);setCliData(null)
   }
 
-  if(mode==='admin')   return <Admin onLogout={logout} salonName={salonName}/>
+  if(mode==='admin')   return <Admin onLogout={logout} salonName={salonName} adminName={adminName}/>
   if(mode==='prof'&&profData)   return <ProfPanel prof={profData} onLogout={logout}/>
   if(mode==='cliente'&&cliData) return <PortalCliente cliente={cliData} onLogout={logout} salonName={salonName}/>
   return <Login onAdmin={loginAdmin} onProf={loginProf} onCliente={loginCli} salonName={salonName}/>
