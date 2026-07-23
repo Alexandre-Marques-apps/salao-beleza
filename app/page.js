@@ -435,10 +435,10 @@ function Login({onAdmin,onProf,onCliente,salonName='Morgane Faoli Nail Style'}){
           <div className="l-title">Seja bem-vinda</div>
           <div className="l-sub">Entre com suas credenciais para acessar a agenda.</div>
           <div>
-            <label className="l-lbl">E-mail ou Usuário</label>
+            <label className="l-lbl">Nome ou telefone</label>
             <div className="l-inp-wrap">
               <input value={u} onChange={e=>{setU(e.target.value);setErr('')}}
-                placeholder="ex: nome@profissional.com"
+                placeholder="Seu nome ou telefone"
                 className="l-inp" autoComplete="username"/>
             </div>
             <label className="l-lbl">Senha</label>

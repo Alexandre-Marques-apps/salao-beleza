@@ -135,12 +135,33 @@ export async function POST(req) {
     })
   }
 
-  // ── CLIENTE ────────────────────────────────────────
-  const { data: cli } = await supabase
-    .from('salon_clients')
-    .select('*')
-    .ilike('full_name', usuario.trim())
-    .single()
+  // ── CLIENTE (login por telefone OU nome) ───────────
+  const entrada = usuario.trim()
+  const digitos = entrada.replace(/\D/g, '')
+  let cli = null
+
+  // 1) Se parece um telefone, procura por telefone (ignorando formatação)
+  if (digitos.length >= 8) {
+    const ult4 = digitos.slice(-4)
+    const { data: cands } = await supabase
+      .from('salon_clients')
+      .select('*')
+      .ilike('phone', `%${ult4}%`)
+    cli = (cands || []).find(c => {
+      const p = (c.phone || '').replace(/\D/g, '')
+      return p.length >= 8 && (p === digitos || p.endsWith(digitos) || digitos.endsWith(p))
+    }) || null
+  }
+
+  // 2) Se não achou por telefone, procura por nome
+  if (!cli) {
+    const { data: porNome } = await supabase
+      .from('salon_clients')
+      .select('*')
+      .ilike('full_name', entrada)
+      .limit(1)
+    if (porNome && porNome.length) cli = porNome[0]
+  }
 
   if (cli) {
     let ok = false
