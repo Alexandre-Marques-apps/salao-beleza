@@ -126,11 +126,20 @@ function getSalonSlots(dmy){
 // Banner promocional + material educativo, editável pelo admin e
 // guardado no banco (salon_settings key='portal').
 const DEFAULT_PORTAL = {
-  banner:{
+  hero:{
     ativo:true,
-    titulo:'Bem-vinda ao seu momento de cuidar de você 💅',
-    texto:'Agende seu horário e garanta unhas impecáveis. Fique de olho nas nossas promoções da estação!',
-    imagem:'',
+    scriptTop:'Sua beleza,',
+    titulo:'na palma da mão',
+    subtitulo:'O app da sua Nail Designer',
+    promo:'Clientes do app têm condições especiais e ofertas exclusivas 💛',
+    destaques:[
+      {ic:'📅',txt:'Agendamento rápido'},
+      {ic:'🔔',txt:'Lembretes personalizados'},
+      {ic:'💅',txt:'Seus serviços favoritos'},
+      {ic:'🏷️',txt:'Ofertas exclusivas'},
+    ],
+    rodape:'Mais que unhas, momentos especiais',
+    fotos:[],
   },
   sobre:{
     intro:'Cuidar das unhas é um gesto de autocuidado. Aqui, cada atendimento une técnica, higiene rigorosa e carinho para realçar a sua beleza — do formato ao acabamento.',
@@ -144,7 +153,7 @@ async function carregarPortal(){
     const {data}=await supabase.from('salon_settings').select('value').eq('key','portal').single()
     if(data?.value){
       const cfg=JSON.parse(data.value)
-      return {...DEFAULT_PORTAL,...cfg,banner:{...DEFAULT_PORTAL.banner,...(cfg.banner||{})},sobre:{...DEFAULT_PORTAL.sobre,...(cfg.sobre||{})}}
+      return {...DEFAULT_PORTAL,...cfg,hero:{...DEFAULT_PORTAL.hero,...(cfg.hero||{})},sobre:{...DEFAULT_PORTAL.sobre,...(cfg.sobre||{})}}
     }
   }catch{}
   return DEFAULT_PORTAL
@@ -153,6 +162,8 @@ async function salvarPortal(cfg){
   const {error}=await supabase.from('salon_settings').upsert({key:'portal',value:JSON.stringify(cfg),updated_at:new Date().toISOString()})
   return !error
 }
+// Texto com efeito dourado metálico (usado no hero do portal)
+const GOLD_TEXT={background:'linear-gradient(135deg,#e7c079,#c9992f 45%,#a9781f)',WebkitBackgroundClip:'text',backgroundClip:'text',WebkitTextFillColor:'transparent',color:'#b8860b'}
 
 // ── DESIGN TOKENS ──────────────────────────────────────
 // "Gilded Atelier" — pérola quente, dourado bronze→champanhe em dois tons,
@@ -2832,6 +2843,7 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
 
   const P='#9A7D56',PA='#C5A880',PP='rgba(197,168,128,.1)',PB='rgba(197,168,128,.3)'
   const css=`
+    @import url('https://fonts.googleapis.com/css2?family=Parisienne&display=swap');
     body{background:#FAFAFA!important;margin:0;}
     .cpw{max-width:440px;margin:0 auto;padding:0 16px 80px;}
     .tab-bar{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;background:#f0ede8;padding:5px;border-radius:14px;margin-bottom:20px;}
@@ -2903,15 +2915,37 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
         {/* ── ABA AGENDAR ── */}
         {tab==='agendar'&&(
           <div>
-            {portal.banner&&portal.banner.ativo&&(portal.banner.imagem||portal.banner.titulo||portal.banner.texto)&&(
-              <div style={{borderRadius:18,overflow:'hidden',marginBottom:18,background:'linear-gradient(135deg,#5c390e,#8a5719 55%,#e2b569)',boxShadow:'0 10px 30px rgba(138,87,25,.28)'}}>
-                {portal.banner.imagem&&<img src={portal.banner.imagem} alt="Promoção" style={{width:'100%',display:'block',maxHeight:220,objectFit:'cover'}}/>}
-                {(portal.banner.titulo||portal.banner.texto)&&(
-                  <div style={{padding:'16px 18px'}}>
-                    {portal.banner.titulo&&<div style={{fontFamily:'Noto Serif,serif',fontSize:18,fontWeight:600,color:'#fff',marginBottom:4,lineHeight:1.25}}>{portal.banner.titulo}</div>}
-                    {portal.banner.texto&&<div style={{fontSize:13,color:'rgba(255,255,255,.9)',lineHeight:1.5}}>{portal.banner.texto}</div>}
-                  </div>
-                )}
+            {portal.hero&&portal.hero.ativo&&(
+              <div style={{position:'relative',borderRadius:24,overflow:'hidden',marginBottom:18,
+                background:'radial-gradient(120% 80% at 100% 0%, rgba(226,181,105,.30), transparent 55%), linear-gradient(150deg,#f8ece1 0%,#f3d9c8 55%,#eec7b3 100%)',
+                border:'1px solid rgba(201,153,47,.35)',boxShadow:'0 14px 36px rgba(160,110,60,.22)'}}>
+                <div aria-hidden style={{position:'absolute',top:16,right:20,fontSize:18,color:'rgba(201,153,47,.5)'}}>♡</div>
+                <div style={{padding:'24px 20px 20px',position:'relative'}}>
+                  {portal.hero.scriptTop&&<div style={{fontFamily:'Parisienne,cursive',fontSize:32,lineHeight:1.05,marginBottom:2,...GOLD_TEXT}}>{portal.hero.scriptTop}</div>}
+                  {portal.hero.titulo&&<div style={{fontFamily:'Manrope,sans-serif',fontWeight:800,fontSize:29,lineHeight:1.03,color:'#4a2f16',textTransform:'uppercase',letterSpacing:'.3px'}}>{portal.hero.titulo}</div>}
+                  {portal.hero.subtitulo&&<div style={{display:'inline-block',marginTop:12,padding:'7px 16px',borderRadius:20,background:'linear-gradient(135deg,#e0b56a,#b8860b)',color:'#fff',fontSize:11.5,fontWeight:700,letterSpacing:'.4px',boxShadow:'0 4px 14px rgba(184,134,11,.35)'}}>{portal.hero.subtitulo}</div>}
+                  {portal.hero.promo&&<div style={{marginTop:14,padding:'11px 14px',borderRadius:14,background:'rgba(255,255,255,.62)',border:'1px solid rgba(201,153,47,.3)',fontSize:13,color:'#6b4a26',lineHeight:1.5}}>{portal.hero.promo}</div>}
+                  {(portal.hero.fotos||[]).length>0&&(
+                    <div style={{display:'flex',gap:10,overflowX:'auto',padding:'16px 2px 8px',scrollSnapType:'x mandatory',WebkitOverflowScrolling:'touch'}}>
+                      {(portal.hero.fotos||[]).slice(0,6).map((f,i)=>(
+                        <div key={i} style={{flexShrink:0,width:130,height:166,borderRadius:16,overflow:'hidden',scrollSnapAlign:'start',border:'2px solid rgba(255,255,255,.92)',boxShadow:'0 6px 16px rgba(160,110,60,.25)'}}>
+                          <img src={f} alt="" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {(portal.hero.destaques||[]).filter(d=>d&&d.txt).length>0&&(
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:11,marginTop:16}}>
+                      {(portal.hero.destaques||[]).filter(d=>d&&d.txt).map((d,i)=>(
+                        <div key={i} style={{display:'flex',alignItems:'center',gap:9}}>
+                          <div style={{width:34,height:34,borderRadius:'50%',background:'rgba(255,255,255,.72)',border:'1px solid rgba(201,153,47,.35)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}}>{d.ic}</div>
+                          <div style={{fontSize:11.5,fontWeight:600,color:'#6b4a26',lineHeight:1.2}}>{d.txt}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {portal.hero.rodape&&<div style={{fontFamily:'Parisienne,cursive',fontSize:23,textAlign:'center',marginTop:18,...GOLD_TEXT}}>{portal.hero.rodape}</div>}
+                </div>
               </div>
             )}
             {ok&&<div className="alert alert-success" style={{marginBottom:16}}>{ok}</div>}
@@ -3391,17 +3425,20 @@ function PortalAdmin({toast2}){
     return()=>{ vivo=false }
   },[])
 
-  const setBanner=(k,v)=>setCfg(c=>({...c,banner:{...c.banner,[k]:v}}))
+  const setHero=(k,v)=>setCfg(c=>({...c,hero:{...c.hero,[k]:v}}))
   const setSobre=(k,v)=>setCfg(c=>({...c,sobre:{...c.sobre,[k]:v}}))
+  const setDestaque=(i,k,v)=>setCfg(c=>{const d=[...(c.hero.destaques||[])];d[i]={...d[i],[k]:v};return{...c,hero:{...c.hero,destaques:d}}})
 
-  function onImg(e){
+  function addFoto(e){
     const f=e.target.files&&e.target.files[0]; if(!f)return
+    if((cfg.hero.fotos||[]).length>=6){ toast2('Máximo de 6 fotos.',false); e.target.value=''; return }
     if(f.size>1.8*1024*1024){ toast2('Imagem muito grande (máx. ~1,5 MB). Escolha uma menor.',false); e.target.value=''; return }
     const r=new FileReader()
-    r.onload=()=>setBanner('imagem',r.result)
+    r.onload=()=>setCfg(c=>({...c,hero:{...c.hero,fotos:[...(c.hero.fotos||[]),r.result].slice(0,6)}}))
     r.readAsDataURL(f)
     e.target.value=''
   }
+  const removeFoto=i=>setCfg(c=>({...c,hero:{...c.hero,fotos:(c.hero.fotos||[]).filter((_,idx)=>idx!==i)}}))
 
   async function salvar(){
     const ok=await salvarPortal(cfg)
@@ -3415,28 +3452,51 @@ function PortalAdmin({toast2}){
 
   return(
     <div style={{maxWidth:680}}>
-      {/* BANNER */}
+      {/* HERO / DESTAQUE DO PORTAL */}
       <div className="card">
         <div className="card-hd">
-          <span className="ch">Banner promocional</span>
-          <div onClick={()=>setBanner('ativo',!cfg.banner.ativo)} style={{width:44,height:24,borderRadius:12,cursor:'pointer',background:cfg.banner.ativo?T.primary:T.surfaceHigh,position:'relative',transition:'background .2s',flexShrink:0}}>
-            <div style={{position:'absolute',top:3,left:cfg.banner.ativo?23:3,width:18,height:18,borderRadius:'50%',background:'#fff',transition:'left .2s',boxShadow:'0 1px 4px rgba(0,0,0,.2)'}}/>
+          <span className="ch">Destaque do portal</span>
+          <div onClick={()=>setHero('ativo',!cfg.hero.ativo)} style={{width:44,height:24,borderRadius:12,cursor:'pointer',background:cfg.hero.ativo?T.primary:T.surfaceHigh,position:'relative',transition:'background .2s',flexShrink:0}}>
+            <div style={{position:'absolute',top:3,left:cfg.hero.ativo?23:3,width:18,height:18,borderRadius:'50%',background:'#fff',transition:'left .2s',boxShadow:'0 1px 4px rgba(0,0,0,.2)'}}/>
           </div>
         </div>
         <div style={{padding:'0 22px 20px'}}>
-          <label className="lbl">Título</label>
-          <input className="inp" value={cfg.banner.titulo||''} onChange={e=>setBanner('titulo',e.target.value)} placeholder="Ex: Promoção de Inverno 💅"/>
-          <label className="lbl">Texto</label>
-          <textarea style={ta} value={cfg.banner.texto||''} onChange={e=>setBanner('texto',e.target.value)} placeholder="Descreva a promoção da estação..."/>
-          <label className="lbl">Imagem</label>
-          {cfg.banner.imagem
-            ? <div style={{position:'relative',borderRadius:14,overflow:'hidden',marginTop:4}}>
-                <img src={cfg.banner.imagem} alt="Banner" style={{width:'100%',display:'block',maxHeight:210,objectFit:'cover'}}/>
-                <button onClick={()=>setBanner('imagem','')} style={{position:'absolute',top:8,right:8,border:'none',borderRadius:8,padding:'6px 12px',background:'rgba(255,255,255,.92)',color:T.danger,fontWeight:700,fontSize:11,cursor:'pointer'}}>Remover</button>
+          <label className="lbl">Linha em destaque (letra cursiva)</label>
+          <input className="inp" value={cfg.hero.scriptTop||''} onChange={e=>setHero('scriptTop',e.target.value)} placeholder="Ex: Sua beleza,"/>
+          <label className="lbl">Título principal</label>
+          <input className="inp" value={cfg.hero.titulo||''} onChange={e=>setHero('titulo',e.target.value)} placeholder="Ex: na palma da mão"/>
+          <label className="lbl">Selo (subtítulo dourado)</label>
+          <input className="inp" value={cfg.hero.subtitulo||''} onChange={e=>setHero('subtitulo',e.target.value)} placeholder="Ex: O app da sua Nail Designer"/>
+          <label className="lbl">Condições especiais / promoção</label>
+          <textarea style={ta} value={cfg.hero.promo||''} onChange={e=>setHero('promo',e.target.value)} placeholder="Ex: Clientes do app têm condições especiais 💛"/>
+          <label className="lbl">Frase de rodapé (letra cursiva)</label>
+          <input className="inp" value={cfg.hero.rodape||''} onChange={e=>setHero('rodape',e.target.value)} placeholder="Ex: Mais que unhas, momentos especiais"/>
+
+          <label className="lbl">Destaques</label>
+          {(cfg.hero.destaques||[]).map((d,i)=>(
+            <div key={i} style={{display:'flex',gap:8,marginBottom:8}}>
+              <input className="inp" style={{width:60,textAlign:'center',padding:'13px 6px'}} value={d.ic||''} onChange={e=>setDestaque(i,'ic',e.target.value)} placeholder="🎁"/>
+              <input className="inp" style={{flex:1}} value={d.txt||''} onChange={e=>setDestaque(i,'txt',e.target.value)} placeholder="Texto do destaque"/>
+            </div>
+          ))}
+          <div style={hint}>Primeiro campo: o emoji/ícone. Segundo: o texto curto.</div>
+
+          <label className="lbl">Fotos (até 6)</label>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginTop:4}}>
+            {(cfg.hero.fotos||[]).map((f,i)=>(
+              <div key={i} style={{position:'relative',borderRadius:12,overflow:'hidden',aspectRatio:'3 / 4',background:T.surfaceLow}}>
+                <img src={f} alt="" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
+                <button onClick={()=>removeFoto(i)} style={{position:'absolute',top:4,right:4,border:'none',borderRadius:8,width:24,height:24,background:'rgba(255,255,255,.92)',color:T.danger,fontWeight:700,cursor:'pointer',fontSize:12,lineHeight:1}}>✕</button>
               </div>
-            : <button onClick={()=>fileRef.current&&fileRef.current.click()} style={{width:'100%',padding:'22px',border:`1.5px dashed ${T.surfaceHigh}`,borderRadius:14,background:T.surfaceLow,color:T.primary,fontWeight:600,fontSize:13,cursor:'pointer',marginTop:4}}>📷 Enviar imagem do banner</button>}
-          <input ref={fileRef} type="file" accept="image/*" onChange={onImg} style={{display:'none'}}/>
-          <div style={hint}>Dica: imagem horizontal (paisagem), até ~1,5 MB.</div>
+            ))}
+            {(cfg.hero.fotos||[]).length<6&&(
+              <button onClick={()=>fileRef.current&&fileRef.current.click()} style={{aspectRatio:'3 / 4',border:`1.5px dashed ${T.surfaceHigh}`,borderRadius:12,background:T.surfaceLow,color:T.primary,fontWeight:600,fontSize:12,cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2}}>
+                <span style={{fontSize:22,lineHeight:1}}>＋</span>Foto
+              </button>
+            )}
+          </div>
+          <input ref={fileRef} type="file" accept="image/*" onChange={addFoto} style={{display:'none'}}/>
+          <div style={hint}>Fotos verticais (retrato) ficam melhores. Até ~1,5 MB cada.</div>
         </div>
       </div>
 
