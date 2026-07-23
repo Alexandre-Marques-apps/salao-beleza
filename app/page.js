@@ -75,7 +75,7 @@ let _funcCache = null
 function getFuncionamento(){
   if(_funcCache) return _funcCache
   try{
-    const s=typeof window!=='undefined'?localStorage.getItem('joudat_funcionamento'):null
+    const s=typeof window!=='undefined'?localStorage.getItem('salao_funcionamento'):null
     return s?JSON.parse(s):DEFAULT_FUNC
   }catch{return DEFAULT_FUNC}
 }
@@ -87,7 +87,7 @@ async function carregarFuncionamento(){
     if(data?.value){
       const cfg=JSON.parse(data.value)
       _funcCache=cfg
-      if(typeof window!=='undefined') localStorage.setItem('joudat_funcionamento',data.value)
+      if(typeof window!=='undefined') localStorage.setItem('salao_funcionamento',data.value)
       return cfg
     }
   }catch{}
@@ -97,7 +97,7 @@ async function carregarFuncionamento(){
 async function salvarFuncionamento(cfg){
   const value=JSON.stringify(cfg)
   _funcCache=cfg
-  if(typeof window!=='undefined') localStorage.setItem('joudat_funcionamento',value)
+  if(typeof window!=='undefined') localStorage.setItem('salao_funcionamento',value)
   const {error}=await supabase.from('salon_settings').upsert({key:'funcionamento',value,updated_at:new Date().toISOString()})
   return !error
 }
@@ -354,7 +354,7 @@ const Badge = ({tipo})=>
 // ══════════════════════════════════════════════════════
 // LOGIN
 // ══════════════════════════════════════════════════════
-function Login({onAdmin,onProf,onCliente,salonName='Joudat Salon'}){
+function Login({onAdmin,onProf,onCliente,salonName='Salão de Beleza'}){
   const [u,setU]=useState('')
   const [p,setP]=useState('')
   const [showP,setShowP]=useState(false)
@@ -469,7 +469,7 @@ function Login({onAdmin,onProf,onCliente,salonName='Joudat Salon'}){
 // ══════════════════════════════════════════════════════
 // ADMIN PANEL
 // ══════════════════════════════════════════════════════
-function Admin({onLogout,salonName='Joudat Salon'}){
+function Admin({onLogout,salonName='Salão de Beleza'}){
   const [tab,setTab]=useState('dashboard')
   const [sb,setSb]=useState(false)
   const [agDate,setAgDate]=useState(todayStr())
@@ -1654,7 +1654,7 @@ function Admin({onLogout,salonName='Joudat Salon'}){
 // ══════════════════════════════════════════════════════
 // PROFISSIONAL PANEL
 // ══════════════════════════════════════════════════════
-function ProfPanel({prof,onLogout,salonName='Joudat Salon'}){
+function ProfPanel({prof,onLogout,salonName='Salão de Beleza'}){
   const [tab,setTab]=useState('hoje')
   const [ld,setLd]=useState(false)
   const [toast,setToast]=useState(null)
@@ -2685,7 +2685,7 @@ function FotoReferencia({onFoto}){
 // ══════════════════════════════════════════════════════
 // PORTAL DO CLIENTE
 // ══════════════════════════════════════════════════════
-function PortalCliente({cliente,onLogout,salonName='Joudat Salon'}){
+function PortalCliente({cliente,onLogout,salonName='Salão de Beleza'}){
   const [tab,setTab]=useState('agendar')
   const [srvs,setSrvs]=useState([])
   const [profs,setProfs]=useState([])
@@ -3117,14 +3117,14 @@ function FuncionamentoAdmin({toast2}){
     sex:{ativo:true, ini:'08:00', fim:'18:00'},
     sab:{ativo:true, ini:'08:00', fim:'13:00'},
     dom:{ativo:false,ini:'08:00', fim:'12:00'},
-    nome:'Joudat Salon',
+    nome:'Salão de Beleza',
     telefone:'',
-    mensagem:'Bem-vindo ao Joudat Salon! Agende seu horário pelo nosso portal.',
+    mensagem:'Bem-vindo ao Salão de Beleza! Agende seu horário pelo nosso portal.',
   }
 
   const [cfg,setCfg]=useState(()=>{
     try{
-      const saved=localStorage.getItem('joudat_funcionamento')
+      const saved=localStorage.getItem('salao_funcionamento')
       return saved?{...defaultConfig,...JSON.parse(saved)}:defaultConfig
     }catch{return defaultConfig}
   })
@@ -3147,7 +3147,7 @@ function FuncionamentoAdmin({toast2}){
 
   async function salvar(){
     const okSave=await salvarFuncionamento(cfg)
-    window.dispatchEvent(new StorageEvent('storage',{key:'joudat_funcionamento',newValue:JSON.stringify(cfg)}))
+    window.dispatchEvent(new StorageEvent('storage',{key:'salao_funcionamento',newValue:JSON.stringify(cfg)}))
     setSaved(true)
     toast2(okSave?'Configurações salvas!':'Salvo no dispositivo (falha ao sincronizar com o banco).',okSave)
     setTimeout(()=>setSaved(false),3000)
@@ -3325,17 +3325,17 @@ function AdminSenhaComp({toast2}){
 // ══════════════════════════════════════════════════════
 // ROOT — login unificado
 // ══════════════════════════════════════════════════════
-export default function Joudat(){
-  const [salonName,setSalonName]=useState('Joudat Salon')
+export default function App(){
+  const [salonName,setSalonName]=useState('Salão de Beleza')
   // Carregar nome do salão só no cliente (localStorage não existe no servidor)
   useEffect(()=>{
     try{
-      const c=localStorage.getItem('joudat_funcionamento')
+      const c=localStorage.getItem('salao_funcionamento')
       if(c){const p=JSON.parse(c);if(p.nome)setSalonName(p.nome)}
     }catch{}
     carregarFuncionamento().then(cfg=>{ if(cfg?.nome) setSalonName(cfg.nome) })
     function onStorage(e){
-      if(e.key==='joudat_funcionamento'&&e.newValue){
+      if(e.key==='salao_funcionamento'&&e.newValue){
         try{const c=JSON.parse(e.newValue);if(c.nome)setSalonName(c.nome)}catch{}
       }
     }
@@ -3345,43 +3345,43 @@ export default function Joudat(){
 
   // Restaura sessão do localStorage ao carregar
   const [mode,setMode]=useState(()=>{
-    try{ return localStorage.getItem('joudat_mode')||null }catch{return null}
+    try{ return localStorage.getItem('salao_mode')||null }catch{return null}
   })
   const [profData,setProfData]=useState(()=>{
     try{
-      const d=localStorage.getItem('joudat_prof')
+      const d=localStorage.getItem('salao_prof')
       return d?JSON.parse(d):null
     }catch{return null}
   })
   const [cliData,setCliData]=useState(()=>{
     try{
-      const d=localStorage.getItem('joudat_cli')
+      const d=localStorage.getItem('salao_cli')
       return d?JSON.parse(d):null
     }catch{return null}
   })
 
   function loginAdmin(){
-    localStorage.setItem('joudat_mode','admin')
-    localStorage.removeItem('joudat_prof')
-    localStorage.removeItem('joudat_cli')
+    localStorage.setItem('salao_mode','admin')
+    localStorage.removeItem('salao_prof')
+    localStorage.removeItem('salao_cli')
     setMode('admin')
   }
   function loginProf(p){
-    localStorage.setItem('joudat_mode','prof')
-    localStorage.setItem('joudat_prof',JSON.stringify(p))
-    localStorage.removeItem('joudat_cli')
+    localStorage.setItem('salao_mode','prof')
+    localStorage.setItem('salao_prof',JSON.stringify(p))
+    localStorage.removeItem('salao_cli')
     setProfData(p);setMode('prof')
   }
   function loginCli(c){
-    localStorage.setItem('joudat_mode','cliente')
-    localStorage.setItem('joudat_cli',JSON.stringify(c))
-    localStorage.removeItem('joudat_prof')
+    localStorage.setItem('salao_mode','cliente')
+    localStorage.setItem('salao_cli',JSON.stringify(c))
+    localStorage.removeItem('salao_prof')
     setCliData(c);setMode('cliente')
   }
   function logout(){
-    localStorage.removeItem('joudat_mode')
-    localStorage.removeItem('joudat_prof')
-    localStorage.removeItem('joudat_cli')
+    localStorage.removeItem('salao_mode')
+    localStorage.removeItem('salao_prof')
+    localStorage.removeItem('salao_cli')
     setMode(null);setProfData(null);setCliData(null)
   }
 
