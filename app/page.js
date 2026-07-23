@@ -122,6 +122,38 @@ function getSalonSlots(dmy){
   return SLOTS.filter(h=>h>=dia.ini&&h<dia.fim)
 }
 
+// ── CONTEÚDO DO PORTAL DO CLIENTE ─────────────────────
+// Banner promocional + material educativo, editável pelo admin e
+// guardado no banco (salon_settings key='portal').
+const DEFAULT_PORTAL = {
+  banner:{
+    ativo:true,
+    titulo:'Bem-vinda ao seu momento de cuidar de você 💅',
+    texto:'Agende seu horário e garanta unhas impecáveis. Fique de olho nas nossas promoções da estação!',
+    imagem:'',
+  },
+  sobre:{
+    intro:'Cuidar das unhas é um gesto de autocuidado. Aqui, cada atendimento une técnica, higiene rigorosa e carinho para realçar a sua beleza — do formato ao acabamento.',
+    processo:'Avaliação do formato e escolha da cor com você\nHigienização e preparação das unhas naturais\nAplicação da base e do alongamento (fibra ou gel), moldando o formato\nModelagem, lixamento e acabamento\nEsmaltação em gel e cutilagem\nHidratação e dicas de cuidado pra durar mais',
+    beneficios:'Unhas mais resistentes e duradouras (3 a 4 semanas)\nAcabamento impecável e brilho prolongado\nCorreção de formato e comprimento\nMenos quebras e lascas no dia a dia\nVisual sempre bonito, sem retoques frequentes',
+    mitos:'Gel estraga a unha natural | Quando aplicado e removido por um profissional, o gel não danifica a unha.\nAlongamento é só estética | Além de bonito, protege e fortalece unhas fracas ou que quebram fácil.\nDá pra remover em casa sem problema | A remoção caseira pode arrancar camadas da unha; sempre remova no salão.\nUnha em gel não deixa a unha respirar | A unha não respira pelo esmalte — a saúde dela vem da hidratação e do cuidado correto.',
+  },
+}
+async function carregarPortal(){
+  try{
+    const {data}=await supabase.from('salon_settings').select('value').eq('key','portal').single()
+    if(data?.value){
+      const cfg=JSON.parse(data.value)
+      return {...DEFAULT_PORTAL,...cfg,banner:{...DEFAULT_PORTAL.banner,...(cfg.banner||{})},sobre:{...DEFAULT_PORTAL.sobre,...(cfg.sobre||{})}}
+    }
+  }catch{}
+  return DEFAULT_PORTAL
+}
+async function salvarPortal(cfg){
+  const {error}=await supabase.from('salon_settings').upsert({key:'portal',value:JSON.stringify(cfg),updated_at:new Date().toISOString()})
+  return !error
+}
+
 // ── DESIGN TOKENS ──────────────────────────────────────
 // "Gilded Atelier" — pérola quente, dourado bronze→champanhe em dois tons,
 // e um acento rosa-quartzo. Profundidade por sombras em camadas + vidro.
@@ -849,6 +881,7 @@ function Admin({onLogout,salonName='Morgane Faoli Nail Style',adminName='Adminis
     {id:'servicos',label:'Serviços',icon:'◈'},
     {id:'financeiro',label:'Financeiro',icon:'◎'},
     {id:'funcionamento',label:'Funcionamento',icon:'🕐'},
+    {id:'portal',label:'Portal / Conteúdo',icon:'📣'},
     {id:'minha_senha',label:'Minha Senha',icon:'🔑'},
   ]
 
@@ -1462,6 +1495,10 @@ function Admin({onLogout,salonName='Morgane Faoli Nail Style',adminName='Adminis
 
           {tab==='funcionamento'&&(<div className="au">
             <FuncionamentoAdmin toast2={toast2}/>
+          </div>)}
+
+          {tab==='portal'&&(<div className="au">
+            <PortalAdmin toast2={toast2}/>
           </div>)}
 
           {tab==='minha_senha'&&(<div className="au">
@@ -2705,9 +2742,11 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
   const [fotoPopup,setFotoPopup]=useState(null)
   const fileRef=useRef(null)
   const [,setFuncTick]=useState(0)
+  const [portal,setPortal]=useState(DEFAULT_PORTAL)
 
   useEffect(()=>{
     carregarFuncionamento().then(()=>setFuncTick(t=>t+1))
+    carregarPortal().then(setPortal)
     supabase.from('services').select('*').eq('active',true).order('name').then(({data})=>setSrvs(data||[]))
     supabase.from('salon_professionals').select('*').eq('active',true).order('full_name').then(({data})=>setProfs(data||[]))
     supabase.from('salon_bookings').select('*').eq('client_name',cliente.full_name).order('booking_date','desc').then(({data})=>setAgs(data||[]))
@@ -2795,8 +2834,8 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
   const css=`
     body{background:#FAFAFA!important;margin:0;}
     .cpw{max-width:440px;margin:0 auto;padding:0 16px 80px;}
-    .tab-bar{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:#f0ede8;padding:5px;border-radius:14px;margin-bottom:20px;}
-    .tab-btn{display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;border:none;border-radius:10px;
+    .tab-bar{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;background:#f0ede8;padding:5px;border-radius:14px;margin-bottom:20px;}
+    .tab-btn{display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 6px;border:none;border-radius:10px;
       font-family:'Manrope',sans-serif;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;background:transparent;color:#999;}
     .tab-btn.on{background:#fff;color:${P};box-shadow:0 1px 6px rgba(0,0,0,.08);}
     .srv-card{background:#fff;border-radius:14px;padding:14px 16px;border:2px solid #eee;
@@ -2854,7 +2893,7 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
       <div className="cpw" style={{marginTop:16}}>
         {/* TABS */}
         <div className="tab-bar">
-          {[{id:'agendar',ic:'✨',l:'Novo Agendamento'},{id:'historico',ic:'📋',l:'Minhas Reservas'}].map(t=>(
+          {[{id:'agendar',ic:'✨',l:'Agendar'},{id:'historico',ic:'📋',l:'Reservas'},{id:'sobre',ic:'💡',l:'Sobre'}].map(t=>(
             <button key={t.id} className={`tab-btn${tab===t.id?' on':''}`} onClick={()=>setTab(t.id)}>
               <span>{t.ic}</span>{t.l}
             </button>
@@ -2864,6 +2903,17 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
         {/* ── ABA AGENDAR ── */}
         {tab==='agendar'&&(
           <div>
+            {portal.banner&&portal.banner.ativo&&(portal.banner.imagem||portal.banner.titulo||portal.banner.texto)&&(
+              <div style={{borderRadius:18,overflow:'hidden',marginBottom:18,background:'linear-gradient(135deg,#5c390e,#8a5719 55%,#e2b569)',boxShadow:'0 10px 30px rgba(138,87,25,.28)'}}>
+                {portal.banner.imagem&&<img src={portal.banner.imagem} alt="Promoção" style={{width:'100%',display:'block',maxHeight:220,objectFit:'cover'}}/>}
+                {(portal.banner.titulo||portal.banner.texto)&&(
+                  <div style={{padding:'16px 18px'}}>
+                    {portal.banner.titulo&&<div style={{fontFamily:'Noto Serif,serif',fontSize:18,fontWeight:600,color:'#fff',marginBottom:4,lineHeight:1.25}}>{portal.banner.titulo}</div>}
+                    {portal.banner.texto&&<div style={{fontSize:13,color:'rgba(255,255,255,.9)',lineHeight:1.5}}>{portal.banner.texto}</div>}
+                  </div>
+                )}
+              </div>
+            )}
             {ok&&<div className="alert alert-success" style={{marginBottom:16}}>{ok}</div>}
 
             <div style={{background:'#fffbf2',border:'1px solid #f5e6c8',borderRadius:14,
@@ -2983,6 +3033,59 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
                 Confirmar Agendamento
               </button>
             )}
+          </div>
+        )}
+
+        {/* ── ABA SOBRE ── */}
+        {tab==='sobre'&&(
+          <div>
+            {portal.sobre.intro&&portal.sobre.intro.trim()&&(
+              <div className="card" style={{padding:'20px'}}>
+                <div style={{fontFamily:'Noto Serif,serif',fontSize:19,fontWeight:600,color:T.onSurface,marginBottom:8}}>Sobre nossos serviços</div>
+                <div style={{fontSize:14,color:T.onSurfaceMed,lineHeight:1.65}}>{portal.sobre.intro}</div>
+              </div>
+            )}
+            {portal.sobre.processo&&portal.sobre.processo.trim()&&(
+              <div className="card" style={{padding:'20px'}}>
+                <div style={{fontFamily:'Noto Serif,serif',fontSize:17,fontWeight:600,color:T.onSurface,marginBottom:14}}>Como é feito</div>
+                {portal.sobre.processo.split('\n').map(l=>l.trim()).filter(Boolean).map((l,i)=>(
+                  <div key={i} style={{display:'flex',gap:12,alignItems:'flex-start',marginBottom:12}}>
+                    <div style={{minWidth:26,height:26,borderRadius:'50%',background:`linear-gradient(135deg,${T.primaryLight},${T.primary})`,color:'#fff',fontSize:12,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{i+1}</div>
+                    <div style={{fontSize:14,color:T.onSurfaceMed,lineHeight:1.5,paddingTop:3}}>{l}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {portal.sobre.beneficios&&portal.sobre.beneficios.trim()&&(
+              <div className="card" style={{padding:'20px'}}>
+                <div style={{fontFamily:'Noto Serif,serif',fontSize:17,fontWeight:600,color:T.onSurface,marginBottom:14}}>Benefícios</div>
+                {portal.sobre.beneficios.split('\n').map(l=>l.trim()).filter(Boolean).map((l,i)=>(
+                  <div key={i} style={{display:'flex',gap:10,alignItems:'flex-start',marginBottom:10}}>
+                    <span style={{color:T.success,fontWeight:700,flexShrink:0,fontSize:15}}>✓</span>
+                    <div style={{fontSize:14,color:T.onSurfaceMed,lineHeight:1.5}}>{l}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {portal.sobre.mitos&&portal.sobre.mitos.trim()&&(
+              <div className="card" style={{padding:'20px'}}>
+                <div style={{fontFamily:'Noto Serif,serif',fontSize:17,fontWeight:600,color:T.onSurface,marginBottom:14}}>Mitos & Verdades</div>
+                {portal.sobre.mitos.split('\n').map(l=>l.trim()).filter(Boolean).map((l,i)=>{
+                  const partes=l.split('|')
+                  const mito=partes[0].trim()
+                  const verdade=partes.slice(1).join('|').trim()
+                  return(
+                    <div key={i} style={{background:T.surfaceLow,borderRadius:14,padding:'14px 16px',marginBottom:10}}>
+                      <div style={{fontSize:13,fontWeight:700,color:T.nailMauve,marginBottom:verdade?5:0}}>“{mito}”</div>
+                      {verdade&&<div style={{fontSize:13.5,color:T.onSurfaceMed,lineHeight:1.55}}><b style={{color:T.success}}>Verdade: </b>{verdade}</div>}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            <div style={{textAlign:'center',padding:'8px 0 4px'}}>
+              <button className="btn btn-primary" onClick={()=>setTab('agendar')} style={{padding:'12px 28px'}}>Agendar meu horário ✨</button>
+            </div>
           </div>
         )}
 
@@ -3268,6 +3371,98 @@ function FuncionamentoAdmin({toast2}){
       </button>
       <div style={{marginTop:10,fontSize:11,color:T2.onSurfaceLow,textAlign:'center'}}>
         As configurações são salvas na nuvem e valem para todos os dispositivos e clientes.
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════
+// PORTAL / CONTEÚDO — editor do banner e do material educativo
+// ══════════════════════════════════════════════════════
+function PortalAdmin({toast2}){
+  const [cfg,setCfg]=useState(DEFAULT_PORTAL)
+  const [carregando,setCarregando]=useState(true)
+  const [saved,setSaved]=useState(false)
+  const fileRef=useRef(null)
+
+  useEffect(()=>{
+    let vivo=true
+    carregarPortal().then(c=>{ if(vivo) setCfg(c) }).finally(()=>{ if(vivo) setCarregando(false) })
+    return()=>{ vivo=false }
+  },[])
+
+  const setBanner=(k,v)=>setCfg(c=>({...c,banner:{...c.banner,[k]:v}}))
+  const setSobre=(k,v)=>setCfg(c=>({...c,sobre:{...c.sobre,[k]:v}}))
+
+  function onImg(e){
+    const f=e.target.files&&e.target.files[0]; if(!f)return
+    if(f.size>1.8*1024*1024){ toast2('Imagem muito grande (máx. ~1,5 MB). Escolha uma menor.',false); e.target.value=''; return }
+    const r=new FileReader()
+    r.onload=()=>setBanner('imagem',r.result)
+    r.readAsDataURL(f)
+    e.target.value=''
+  }
+
+  async function salvar(){
+    const ok=await salvarPortal(cfg)
+    setSaved(true)
+    toast2(ok?'Conteúdo do portal salvo!':'Falha ao salvar. Tente de novo.',ok)
+    setTimeout(()=>setSaved(false),3000)
+  }
+
+  const ta={width:'100%',minHeight:96,padding:'12px 14px',background:T.surfaceLow,border:'1px solid transparent',borderRadius:12,fontFamily:'Manrope,sans-serif',fontSize:14,color:T.onSurface,outline:'none',boxSizing:'border-box',resize:'vertical',lineHeight:1.6,marginTop:2}
+  const hint={fontSize:11,color:T.onSurfaceLow,marginTop:6,lineHeight:1.5}
+
+  return(
+    <div style={{maxWidth:680}}>
+      {/* BANNER */}
+      <div className="card">
+        <div className="card-hd">
+          <span className="ch">Banner promocional</span>
+          <div onClick={()=>setBanner('ativo',!cfg.banner.ativo)} style={{width:44,height:24,borderRadius:12,cursor:'pointer',background:cfg.banner.ativo?T.primary:T.surfaceHigh,position:'relative',transition:'background .2s',flexShrink:0}}>
+            <div style={{position:'absolute',top:3,left:cfg.banner.ativo?23:3,width:18,height:18,borderRadius:'50%',background:'#fff',transition:'left .2s',boxShadow:'0 1px 4px rgba(0,0,0,.2)'}}/>
+          </div>
+        </div>
+        <div style={{padding:'0 22px 20px'}}>
+          <label className="lbl">Título</label>
+          <input className="inp" value={cfg.banner.titulo||''} onChange={e=>setBanner('titulo',e.target.value)} placeholder="Ex: Promoção de Inverno 💅"/>
+          <label className="lbl">Texto</label>
+          <textarea style={ta} value={cfg.banner.texto||''} onChange={e=>setBanner('texto',e.target.value)} placeholder="Descreva a promoção da estação..."/>
+          <label className="lbl">Imagem</label>
+          {cfg.banner.imagem
+            ? <div style={{position:'relative',borderRadius:14,overflow:'hidden',marginTop:4}}>
+                <img src={cfg.banner.imagem} alt="Banner" style={{width:'100%',display:'block',maxHeight:210,objectFit:'cover'}}/>
+                <button onClick={()=>setBanner('imagem','')} style={{position:'absolute',top:8,right:8,border:'none',borderRadius:8,padding:'6px 12px',background:'rgba(255,255,255,.92)',color:T.danger,fontWeight:700,fontSize:11,cursor:'pointer'}}>Remover</button>
+              </div>
+            : <button onClick={()=>fileRef.current&&fileRef.current.click()} style={{width:'100%',padding:'22px',border:`1.5px dashed ${T.surfaceHigh}`,borderRadius:14,background:T.surfaceLow,color:T.primary,fontWeight:600,fontSize:13,cursor:'pointer',marginTop:4}}>📷 Enviar imagem do banner</button>}
+          <input ref={fileRef} type="file" accept="image/*" onChange={onImg} style={{display:'none'}}/>
+          <div style={hint}>Dica: imagem horizontal (paisagem), até ~1,5 MB.</div>
+        </div>
+      </div>
+
+      {/* SOBRE / MATERIAL EDUCATIVO */}
+      <div className="card">
+        <div className="card-hd"><span className="ch">Sobre os serviços de unha</span></div>
+        <div style={{padding:'0 22px 20px'}}>
+          <label className="lbl">Introdução</label>
+          <textarea style={ta} value={cfg.sobre.intro||''} onChange={e=>setSobre('intro',e.target.value)}/>
+          <label className="lbl">Como é feito (processo)</label>
+          <textarea style={ta} value={cfg.sobre.processo||''} onChange={e=>setSobre('processo',e.target.value)}/>
+          <div style={hint}>Uma etapa por linha — vira uma lista numerada para a cliente.</div>
+          <label className="lbl">Benefícios</label>
+          <textarea style={ta} value={cfg.sobre.beneficios||''} onChange={e=>setSobre('beneficios',e.target.value)}/>
+          <div style={hint}>Um benefício por linha.</div>
+          <label className="lbl">Mitos & Verdades</label>
+          <textarea style={{...ta,minHeight:120}} value={cfg.sobre.mitos||''} onChange={e=>setSobre('mitos',e.target.value)}/>
+          <div style={hint}>Um por linha, no formato: <b>Mito | explicação da verdade</b></div>
+        </div>
+      </div>
+
+      <button onClick={salvar} disabled={carregando} className="btn btn-primary" style={{width:'100%',justifyContent:'center',padding:14,fontSize:13,opacity:carregando?.6:1,cursor:carregando?'not-allowed':'pointer'}}>
+        {carregando?'Carregando…':saved?'✓ Conteúdo salvo!':'Salvar conteúdo do portal'}
+      </button>
+      <div style={{marginTop:10,fontSize:11,color:T.onSurfaceLow,textAlign:'center'}}>
+        O conteúdo é salvo na nuvem e aparece para todas as clientes no portal.
       </div>
     </div>
   )
