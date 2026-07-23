@@ -354,7 +354,7 @@ const Badge = ({tipo})=>
 // ══════════════════════════════════════════════════════
 // LOGIN
 // ══════════════════════════════════════════════════════
-function Login({onAdmin,onProf,onCliente,salonName='Salão de Beleza'}){
+function Login({onAdmin,onProf,onCliente,salonName='Morgane Faoli Nail Style'}){
   const [u,setU]=useState('')
   const [p,setP]=useState('')
   const [showP,setShowP]=useState(false)
@@ -469,7 +469,7 @@ function Login({onAdmin,onProf,onCliente,salonName='Salão de Beleza'}){
 // ══════════════════════════════════════════════════════
 // ADMIN PANEL
 // ══════════════════════════════════════════════════════
-function Admin({onLogout,salonName='Salão de Beleza'}){
+function Admin({onLogout,salonName='Morgane Faoli Nail Style'}){
   const [tab,setTab]=useState('dashboard')
   const [sb,setSb]=useState(false)
   const [agDate,setAgDate]=useState(todayStr())
@@ -1654,7 +1654,7 @@ function Admin({onLogout,salonName='Salão de Beleza'}){
 // ══════════════════════════════════════════════════════
 // PROFISSIONAL PANEL
 // ══════════════════════════════════════════════════════
-function ProfPanel({prof,onLogout,salonName='Salão de Beleza'}){
+function ProfPanel({prof,onLogout,salonName='Morgane Faoli Nail Style'}){
   const [tab,setTab]=useState('hoje')
   const [ld,setLd]=useState(false)
   const [toast,setToast]=useState(null)
@@ -2685,7 +2685,7 @@ function FotoReferencia({onFoto}){
 // ══════════════════════════════════════════════════════
 // PORTAL DO CLIENTE
 // ══════════════════════════════════════════════════════
-function PortalCliente({cliente,onLogout,salonName='Salão de Beleza'}){
+function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
   const [tab,setTab]=useState('agendar')
   const [srvs,setSrvs]=useState([])
   const [profs,setProfs]=useState([])
@@ -3117,9 +3117,9 @@ function FuncionamentoAdmin({toast2}){
     sex:{ativo:true, ini:'08:00', fim:'18:00'},
     sab:{ativo:true, ini:'08:00', fim:'13:00'},
     dom:{ativo:false,ini:'08:00', fim:'12:00'},
-    nome:'Salão de Beleza',
+    nome:'Morgane Faoli Nail Style',
     telefone:'',
-    mensagem:'Bem-vindo ao Salão de Beleza! Agende seu horário pelo nosso portal.',
+    mensagem:'Bem-vinda ao Morgane Faoli Nail Style! Agende seu horário pelo nosso portal.',
   }
 
   const [cfg,setCfg]=useState(()=>{
@@ -3326,7 +3326,7 @@ function AdminSenhaComp({toast2}){
 // ROOT — login unificado
 // ══════════════════════════════════════════════════════
 export default function App(){
-  const [salonName,setSalonName]=useState('Salão de Beleza')
+  const [salonName,setSalonName]=useState('Morgane Faoli Nail Style')
   // Carregar nome do salão só no cliente (localStorage não existe no servidor)
   useEffect(()=>{
     try{

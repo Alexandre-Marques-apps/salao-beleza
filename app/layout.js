@@ -1,6 +1,6 @@
 export const metadata = {
-  title: 'Salão de Beleza',
-  description: 'Agendamento online',
+  title: 'Morgane Faoli Nail Style',
+  description: 'Agende seu horário online',
 }
 
 export default function RootLayout({ children }) {
