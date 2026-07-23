@@ -127,7 +127,12 @@ export async function POST(req) {
       }, { status: 401 })
     }
     resetaTentativas(ip)
-    return Response.json({ ok: true, perfil: 'profissional', dados: prof })
+    // Profissionais marcados como administradores acessam o painel de admin
+    return Response.json({
+      ok: true,
+      perfil: prof.is_admin ? 'admin' : 'profissional',
+      dados: prof,
+    })
   }
 
   // ── CLIENTE ────────────────────────────────────────
