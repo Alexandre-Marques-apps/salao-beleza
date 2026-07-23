@@ -501,8 +501,8 @@ function Admin({onLogout,salonName='Morgane Faoli Nail Style'}){
       supabase.from('services').select('*,service_categories(name)').eq('active',true).order('name'),
       supabase.from('service_categories').select('*').order('name'),
       supabase.from('salon_blocks').select('*').order('block_date').order('start_time'),
+      carregarFuncionamento(),
     ])
-    await carregarFuncionamento()
     setAgs(r1.data||[]);setClients(r2.data||[]);setProfs(r3.data||[]);setSrvs(r4.data||[]);setCats(r5.data||[]);setBlocks(r6.data||[])
     setLd(false)
   },[])
@@ -1674,8 +1674,8 @@ function ProfPanel({prof,onLogout,salonName='Morgane Faoli Nail Style'}){
     const[r1,r2]=await Promise.all([
       supabase.from('salon_bookings').select('*,created_at').eq('professional_name',prof.full_name).order('booking_date').order('start_time'),
       supabase.from('salon_blocks').select('*').eq('professional_name',prof.full_name).order('block_date').order('start_time'),
+      carregarFuncionamento(),
     ])
-    await carregarFuncionamento()
     setAgs(r1.data||[]);setBlocks(r2.data||[])
     setLd(false)
   },[prof.full_name])
