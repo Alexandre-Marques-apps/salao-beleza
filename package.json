@@ -13,6 +13,10 @@
     "react-dom": "^18",
     "@supabase/supabase-js": "^2",
     "@supabase/ssr": "^0.5.1",
-    "bcryptjs": "^2.4.3"
+    "bcryptjs": "^2.4.3",
+    "@capacitor/core": "^8.4.2",
+    "@capacitor/cli": "^8.4.2",
+    "@capacitor/android": "^8.4.2",
+    "@capacitor/push-notifications": "^8.1.2"
   }
 }

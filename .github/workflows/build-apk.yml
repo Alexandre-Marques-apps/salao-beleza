@@ -1,0 +1,40 @@
+name: Build APK
+
+on:
+  # Rodar manualmente (Actions > Build APK > Run workflow).
+  # Auto-build a cada push fica desligado ate o Firebase (google-services.json) estar configurado.
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install deps
+        run: npm install
+
+      - name: Sync Capacitor (copia config pro projeto Android)
+        run: npx cap sync android
+
+      - name: Build APK (debug, instalável direto)
+        working-directory: android
+        run: chmod +x gradlew && ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: morgane-nails-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk

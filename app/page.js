@@ -3598,6 +3598,31 @@ export default function App(){
     return()=>window.removeEventListener('storage',onStorage)
   },[])
 
+  // ── PUSH (só dentro do APK Android; no navegador sai na hora, sem efeito) ──
+  useEffect(()=>{
+    if(typeof window==='undefined'||!window.Capacitor)return
+    ;(async()=>{
+      try{
+        const mode=localStorage.getItem('salao_mode')
+        if(!mode)return
+        const {PushNotifications}=await import('@capacitor/push-notifications')
+        const perm=await PushNotifications.requestPermissions()
+        if(perm.receive!=='granted')return
+        await PushNotifications.register()
+        PushNotifications.addListener('registration',async(token)=>{
+          let ownerId=null
+          try{
+            if(mode==='profissional')ownerId=JSON.parse(localStorage.getItem('salao_prof')||'{}').id
+            if(mode==='cliente')ownerId=JSON.parse(localStorage.getItem('salao_cli')||'{}').id
+          }catch{}
+          try{
+            await fetch('/api/push/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:token.value,role:mode,ownerId})})
+          }catch{}
+        })
+      }catch{}
+    })()
+  },[])
+
   // Restaura sessão do localStorage ao carregar
   const [mode,setMode]=useState(()=>{
     try{ return localStorage.getItem('salao_mode')||null }catch{return null}

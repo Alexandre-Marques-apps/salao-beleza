@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Morgane Nails</string>
+    <string name="title_activity_main">Morgane Nails</string>
+    <string name="package_name">com.morganefaoli.nailstyle</string>
+    <string name="custom_url_scheme">com.morganefaoli.nailstyle</string>
+</resources>
