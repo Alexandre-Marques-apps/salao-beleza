@@ -28,7 +28,7 @@ const SAFE_COLUMNS = {
 
 // Colunas graváveis por tabela (whitelist — o resto do payload é descartado)
 const WRITABLE = {
-  salon_bookings: ['client_name', 'service_name', 'professional_name', 'booking_date', 'start_time', 'status', 'service_price', 'price_charged', 'commission_pct', 'commission_value', 'payment_method', 'duration_min', 'reference_photo'],
+  salon_bookings: ['client_name', 'service_name', 'professional_name', 'booking_date', 'start_time', 'status', 'service_price', 'price_charged', 'commission_pct', 'commission_value', 'payment_method', 'duration_min', 'reference_photo', 'cancelled_at'],
   salon_clients: ['full_name', 'phone', 'email', 'visits', 'total_spent', 'senha', 'last_visit'],
   salon_professionals: ['full_name', 'specialty', 'tipo', 'commission_pct', 'schedule_start', 'schedule_end', 'senha', 'active', 'phone'],
   services: ['name', 'category', 'tipo', 'price', 'duration_min', 'active', 'category_id'],
