@@ -634,13 +634,24 @@ function Admin({onLogout,salonName='Morgane Faoli Nail Style',adminName='Adminis
   const solicitacoes=agRows.filter(a=>a.status==='pending')
   const pendCount=solicitacoes.length
 
+  // ── CANCELAMENTOS RECENTES (aviso pro admin) ────────
+  const _horasDesde=ts=>ts?(Date.now()-new Date(ts).getTime())/3600000:99999
+  const cancelamentos=ags
+    .filter(a=>a.status==='cancelled'&&a.cancelled_at&&_horasDesde(a.cancelled_at)<=168)
+    .map(a=>({
+      id:a.id, cliName:a.client_name||'', srvName:a.service_name||'', profName:a.professional_name||'',
+      dmy:isoToDmy(a.booking_date), time:(a.start_time||'').slice(0,5), cancelledAt:a.cancelled_at,
+    }))
+    .sort((a,b)=>new Date(b.cancelledAt)-new Date(a.cancelledAt))
+  const cancelCount=cancelamentos.filter(a=>_horasDesde(a.cancelledAt)<=48).length
+
   async function aprovarSol(id){
     await supabase.from('salon_bookings').update({status:'scheduled'}).eq('id',id)
     toast2('Agendamento aprovado! ✓');load()
   }
   async function recusarSol(id){
     if(!window.confirm('Recusar esta solicitação?'))return
-    await supabase.from('salon_bookings').update({status:'cancelled'}).eq('id',id)
+    await supabase.from('salon_bookings').update({status:'cancelled',cancelled_at:new Date().toISOString()}).eq('id',id)
     toast2('Solicitação recusada.');load()
   }
 
@@ -772,16 +783,12 @@ function Admin({onLogout,salonName='Morgane Faoli Nail Style',adminName='Adminis
     const a=agRows.find(x=>x.id===id)
     if(a?.status==='completed'){toast2('Atendimentos finalizados não podem ser excluídos',false);return}
     if(!window.confirm('Cancelar este agendamento? O profissional será notificado.'))return
-    // Marca como cancelado em vez de deletar — profissional verá na aba Avisos
-    const{error}=await supabase.from('salon_bookings').update({
+    // Marca como cancelado em vez de deletar — aparece nos avisos de cancelamento
+    await supabase.from('salon_bookings').update({
       status:'cancelled',
       cancelled_at: new Date().toISOString(),
     }).eq('id',id)
-    if(error){
-      // Se coluna não existir, tenta só o status
-      await supabase.from('salon_bookings').update({status:'cancelled'}).eq('id',id)
-    }
-    toast2('Agendamento cancelado! Profissional notificado.');load()
+    toast2('Agendamento cancelado!');load()
   }
 
   function editAg(a){
@@ -886,6 +893,7 @@ function Admin({onLogout,salonName='Morgane Faoli Nail Style',adminName='Adminis
     {id:'dashboard',label:'Dashboard',icon:'⬡'},
     {id:'agenda',label:'Agenda',icon:'◷'},
     {id:'solicitacoes',label:'Solicitações',icon:'🔔'},
+    {id:'cancelamentos',label:'Cancelamentos',icon:'❌'},
     {id:'clientes',label:'Clientes',icon:'◉'},
     {id:'retencao',label:'Retenção',icon:'📊'},
     {id:'profissionais',label:'Profissionais',icon:'✦'},
@@ -934,6 +942,9 @@ function Admin({onLogout,salonName='Morgane Faoli Nail Style',adminName='Adminis
               <span style={{flex:1}}>{n.label}</span>
               {n.id==='solicitacoes'&&pendCount>0&&(
                 <span style={{background:'#b33a3a',color:'white',borderRadius:'50%',width:18,height:18,fontSize:10,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{pendCount}</span>
+              )}
+              {n.id==='cancelamentos'&&cancelCount>0&&(
+                <span style={{background:'#b33a3a',color:'white',borderRadius:'50%',width:18,height:18,fontSize:10,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{cancelCount}</span>
               )}
             </div>
           ))}
@@ -1228,6 +1239,40 @@ function Admin({onLogout,salonName='Morgane Faoli Nail Style',adminName='Adminis
                       </div>
                     </div>
                   ))}
+                </div>
+              }
+            </div>
+          </div>)}
+
+          {tab==='cancelamentos'&&(<div className="au">
+            <div className="card">
+              <div className="card-hd">
+                <span className="ch">Cancelamentos recentes</span>
+                <span style={{fontSize:12,color:T.onSurfaceLow}}>últimos 7 dias</span>
+              </div>
+              {cancelamentos.length===0
+                ?<div style={{padding:32,textAlign:'center',color:T.onSurfaceLow,fontSize:13}}>
+                  Nenhum cancelamento recente ✨
+                 </div>
+                :<div style={{padding:'0 14px 14px'}}>
+                  {cancelamentos.map(a=>{
+                    const h=_horasDesde(a.cancelledAt)
+                    const quando=h<1?'há poucos minutos':h<24?`há ${Math.round(h)}h`:`há ${Math.round(h/24)} dia(s)`
+                    return(
+                    <div key={a.id} style={{display:'flex',alignItems:'center',gap:12,padding:'14px 16px',borderRadius:14,background:T.dangerPale,border:`1px solid ${T.danger}22`,marginBottom:10}}>
+                      <div style={{fontSize:18,flexShrink:0}}>❌</div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4,flexWrap:'wrap'}}>
+                          <span style={{fontSize:10,fontWeight:700,letterSpacing:2,textTransform:'uppercase',color:T.danger}}>Cancelado</span>
+                          <span style={{fontSize:10,color:T.onSurfaceLow}}>{quando}</span>
+                        </div>
+                        <div style={{fontSize:14,fontWeight:700,color:T.onSurface}}>{a.cliName}</div>
+                        <div style={{fontSize:12,color:T.onSurfaceMed,marginTop:2}}>{a.srvName} · {a.profName}</div>
+                        <div style={{fontSize:12,color:T.onSurfaceMed,marginTop:2}}>Era {a.dmy} às {a.time}</div>
+                      </div>
+                    </div>
+                    )
+                  })}
                 </div>
               }
             </div>
@@ -2020,12 +2065,12 @@ function ProfPanel({prof,onLogout,salonName='Morgane Faoli Nail Style'}){
   }
 
   // ── NOTIFICAÇÕES ─────────────────────────────────────
-  // Busca agendamentos recentes (últimas 48h criados/cancelados)
-  const notifs=ags.filter(a=>{
-    const created=new Date(a.created_at||0)
-    const diff=(Date.now()-created.getTime())/(1000*60*60)
-    return diff<=48
-  }).sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0))
+  // Busca agendamentos recentes: criados nas últimas 48h OU cancelados nas últimas 48h
+  const _hrs=ts=>ts?(Date.now()-new Date(ts).getTime())/3600000:99999
+  const _quando=a=>Math.max(new Date(a.created_at||0).getTime(), a.cancelled_at?new Date(a.cancelled_at).getTime():0)
+  const notifs=ags
+    .filter(a=>_hrs(a.created_at)<=48||_hrs(a.cancelled_at)<=48)
+    .sort((a,b)=>_quando(b)-_quando(a))
 
   return(
     <>
@@ -2120,7 +2165,7 @@ function ProfPanel({prof,onLogout,salonName='Morgane Faoli Nail Style'}){
                           }}>✓ Aprovar</button>
                           <button className="btn btn-danger btn-sm" onClick={async()=>{
                             if(!window.confirm('Recusar esta solicitação?'))return
-                            await supabase.from('salon_bookings').update({status:'cancelled'}).eq('id',a.id)
+                            await supabase.from('salon_bookings').update({status:'cancelled',cancelled_at:new Date().toISOString()}).eq('id',a.id)
                             toast2('Solicitação recusada.');load()
                           }}>✕ Recusar</button>
                         </div>
@@ -2171,7 +2216,7 @@ function ProfPanel({prof,onLogout,salonName='Morgane Faoli Nail Style'}){
                     )}
                     <button onClick={async()=>{
                       if(!window.confirm('Cancelar este atendimento?'))return
-                      await supabase.from('salon_bookings').update({status:'cancelled'}).eq('id',a.id)
+                      await supabase.from('salon_bookings').update({status:'cancelled',cancelled_at:new Date().toISOString()}).eq('id',a.id)
                       toast2('Atendimento cancelado.');load()
                     }} style={{padding:'3px 8px',background:'#fbeaea',border:'1px solid #e0a0a0',
                       borderRadius:8,fontFamily:'Manrope,sans-serif',fontSize:10,
@@ -2292,7 +2337,7 @@ function ProfPanel({prof,onLogout,salonName='Morgane Faoli Nail Style'}){
                                 </button>
                                 <button onClick={async()=>{
                                   if(!window.confirm('Cancelar este atendimento?'))return
-                                  await supabase.from('salon_bookings').update({status:'cancelled'}).eq('id',ocupado.id)
+                                  await supabase.from('salon_bookings').update({status:'cancelled',cancelled_at:new Date().toISOString()}).eq('id',ocupado.id)
                                   toast2('Atendimento cancelado.');load()
                                 }} style={{padding:'5px 12px',background:'#fbeaea',border:'1px solid #e0a0a0',
                                     borderRadius:8,fontFamily:'Manrope,sans-serif',fontSize:11,
