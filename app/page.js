@@ -861,6 +861,33 @@ function Admin({onLogout,salonName='Morgane Faoli Nail Style',adminName='Adminis
     closeM();toast2('Atendimento finalizado ✓');load()
   }
 
+  // Registro de ENCAIXE / atendimento avulso — lança um atendimento que já
+  // aconteceu, direto como concluído, sem as travas de horário/antecedência/conflito.
+  async function saveEncaixe(){
+    setFerr('')
+    const nome=(form.client_name||'').trim()
+    if(!nome||!form.service_name||!form.professional_name||!form.dmy){setFerr('Preencha cliente, profissional, serviço e data');return}
+    if(!form.paid_val||Number(form.paid_val)<=0){setFerr('Informe o valor cobrado');return}
+    const p=profs.find(x=>x.full_name===form.professional_name)
+    const s=srvs.find(x=>x.name===form.service_name)
+    const val=Number(form.paid_val)||0
+    const pct=p?.commission_pct||0
+    const hhmm=(form.time&&form.time.length>=4)?form.time:'12:00'
+    const pl={
+      client_name:nome, service_name:form.service_name, professional_name:form.professional_name,
+      booking_date:dmyToISO(form.dmy), start_time:hhmm.length===5?hhmm+':00':hhmm,
+      status:'completed', service_price:s?.price||val, price_charged:val,
+      commission_pct:pct, commission_value:Math.round(val*(pct/100)*100)/100,
+      payment_method:form.payment_method||'cash', duration_min:s?.duration_min||30,
+    }
+    const{error}=await supabase.from('salon_bookings').insert(pl)
+    if(error){setFerr('Erro: '+error.message);return}
+    // Se a cliente estiver cadastrada, soma no histórico (visitas / total gasto)
+    const cl=clients.find(c=>(c.full_name||'').toLowerCase()===nome.toLowerCase())
+    if(cl) await supabase.from('salon_clients').update({visits:(cl.visits||0)+1,total_spent:(Number(cl.total_spent)||0)+val,last_visit:dmyToISO(form.dmy)}).eq('id',cl.id)
+    closeM();toast2('Encaixe registrado ✓');load()
+  }
+
   async function saveCli(){
     if(!form.full_name){setFerr('Informe o nome');return}
     const pl={full_name:form.full_name.trim(),phone:form.phone||'',email:form.email||''}
@@ -1121,7 +1148,10 @@ function Admin({onLogout,salonName='Morgane Faoli Nail Style',adminName='Adminis
                     </span>
                   )}
                 </div>
-                <button className="btn btn-primary btn-sm" onClick={()=>openM('ag',{client_name:'',service_name:'',professional_name:'',dmy:agDate,time:'',profFix:false})}>+ Agendar</button>
+                <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                  <button className="btn btn-ghost btn-sm" onClick={()=>openM('encaixe',{client_name:'',service_name:'',professional_name:'',dmy:agDate,time:'',paid_val:'',payment_method:'cash'})}>+ Encaixe</button>
+                  <button className="btn btn-primary btn-sm" onClick={()=>openM('ag',{client_name:'',service_name:'',professional_name:'',dmy:agDate,time:'',profFix:false})}>+ Agendar</button>
+                </div>
               </div>
               {profs.length===0?<div style={{padding:28,textAlign:'center',color:T.onSurfaceLow,fontSize:13}}>Cadastre profissionais primeiro</div>
               :<div className="grade-wrap">
@@ -1612,6 +1642,33 @@ function Admin({onLogout,salonName='Morgane Faoli Nail Style',adminName='Adminis
           {ferr&&<Alert type="danger" c={ferr}/>}
           <div style={{display:'flex',gap:10,marginTop:20}}>
             <button className="btn btn-primary" style={{flex:1}} onClick={saveAg}>Salvar</button>
+            <button className="btn btn-ghost" onClick={closeM}>Cancelar</button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Encaixe / atendimento avulso */}
+      {modal==='encaixe'&&(
+        <Modal title="Registrar encaixe" onClose={closeM}>
+          <Alert type="info" c="Lançamento de um atendimento que já aconteceu (encaixe). Entra direto como concluído — no faturamento, na comissão e no histórico da cliente."/>
+          <Lbl c="Cliente *"/>
+          <input className="inp" list="enc-clientes" value={form.client_name||''} onChange={e=>F('client_name')(e.target.value)} placeholder="Nome da cliente (existente ou nova)"/>
+          <datalist id="enc-clientes">{clients.map(c=><option key={c.id} value={c.full_name}/>)}</datalist>
+          <Lbl c="Profissional *"/><Sel v={form.professional_name} set={F('professional_name')}><option value="">Selecionar…</option>{profs.map(p=><option key={p.id}>{p.full_name}</option>)}</Sel>
+          <Lbl c="Serviço *"/><Sel v={form.service_name||''} set={F('service_name')}><option value="">Selecionar…</option>{srvs.map(s=><option key={s.id} value={s.name}>{s.name} ({s.duration_min}min)</option>)}</Sel>
+          <Lbl c="Data *"/><input type="date" value={dmyToISO(form.dmy)||''} onChange={e=>setForm(f=>({...f,dmy:isoToDmy(e.target.value)}))} className="inp"/>
+          <Lbl c="Horário (opcional)"/><Sel v={form.time||''} set={F('time')}><option value="">— não informar</option>{SLOTS.map(h=><option key={h}>{h}</option>)}</Sel>
+          <Lbl c="Valor cobrado *"/><Inp v={form.paid_val} set={F('paid_val')} type="number" ph="Valor recebido"/>
+          <Lbl c="Forma de pagamento"/>
+          <Sel v={form.payment_method||'cash'} set={F('payment_method')}>
+            <option value="cash">💵 Dinheiro</option>
+            <option value="pix">📱 PIX</option>
+            <option value="credit_card">💳 Crédito</option>
+            <option value="debit_card">💳 Débito</option>
+          </Sel>
+          {ferr&&<Alert type="danger" c={ferr}/>}
+          <div style={{display:'flex',gap:10,marginTop:20}}>
+            <button className="btn btn-primary" style={{flex:1,background:'linear-gradient(135deg,#3a7a4a,#2e6040)'}} onClick={saveEncaixe}>✓ Registrar</button>
             <button className="btn btn-ghost" onClick={closeM}>Cancelar</button>
           </div>
         </Modal>
