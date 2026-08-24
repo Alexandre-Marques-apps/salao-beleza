@@ -530,6 +530,8 @@ function Admin({onLogout,salonName='Morgane Faoli Nail Style',adminName='Adminis
   const [cats,setCats]=useState([])
   const [blocks,setBlocks]=useState([])
   const [retPeriod,setRetPeriod]=useState(30)
+  const [periodoIni,setPeriodoIni]=useState(()=>{const d=new Date();return new Date(d.getFullYear(),d.getMonth(),1).toISOString().slice(0,10)})
+  const [periodoFim,setPeriodoFim]=useState(()=>todayISO())
 
   const toast2=(m,ok=true)=>{setToast({m,ok});setTimeout(()=>setToast(null),3200)}
   const F=k=>v=>setForm(f=>({...f,[k]:v}))
@@ -700,6 +702,18 @@ function Admin({onLogout,salonName='Morgane Faoli Nail Style',adminName='Adminis
 
   // top professionals
   const profRev=profs.map(p=>({name:p.full_name,rev:agDone.filter(a=>a.profName===p.full_name).reduce((s,a)=>s+a.paid,0),count:agDone.filter(a=>a.profName===p.full_name).length})).sort((a,b)=>b.rev-a.rev)
+
+  // ── PERÍODO SELECIONÁVEL (dashboard) — filtra os resultados no intervalo De/Até ──
+  const agPeriodo=agDone.filter(a=>{const iso=dmyToISO(a.dmy);return iso>=periodoIni&&iso<=periodoFim})
+  const fatPeriodo=agPeriodo.reduce((s,a)=>s+a.paid,0)
+  const comissoesPeriodo=agPeriodo.reduce((s,a)=>s+a.comVal,0)
+  const receitaLiquidaPeriodo=fatPeriodo-comissoesPeriodo
+  const ticketMedioPeriodo=agPeriodo.length>0?(fatPeriodo/agPeriodo.length):0
+  const srvCountPeriodo=agPeriodo.reduce((acc,a)=>{acc[a.srvName]=(acc[a.srvName]||0)+1;return acc},{})
+  const topSrvsPeriodo=Object.entries(srvCountPeriodo).sort((a,b)=>b[1]-a[1]).slice(0,5)
+  const profRevPeriodo=profs.map(p=>({name:p.full_name,rev:agPeriodo.filter(a=>a.profName===p.full_name).reduce((s,a)=>s+a.paid,0),count:agPeriodo.filter(a=>a.profName===p.full_name).length})).sort((a,b)=>b.rev-a.rev)
+  const periodoLabel=isoToDmy(periodoIni)+' – '+isoToDmy(periodoFim)
+  const mesmoDia=periodoIni===periodoFim
 
   // retention approx: clients with 2+ visits
   const retentionClientsCount=clients.filter(c=>(c.visits||0)>=2).length
@@ -1012,20 +1026,39 @@ function Admin({onLogout,salonName='Morgane Faoli Nail Style',adminName='Adminis
 
           {/* ══ DASHBOARD ══ */}
           {tab==='dashboard'&&(<>
-            {/* Headline */}
-            <div className="au" style={{marginBottom:28}}>
-              <div style={{fontSize:10,fontWeight:700,letterSpacing:4,textTransform:'uppercase',color:T.onSurfaceLow,marginBottom:6}}>Visão Geral</div>
-              <div style={{fontFamily:'Noto Serif,serif',fontSize:32,fontWeight:700,color:T.onSurface,lineHeight:1.15}}>Painel de Controle</div>
-              <div style={{fontSize:13,color:T.onSurfaceLow,marginTop:6}}>{new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
+            {/* Headline + seletor de período */}
+            <div className="au" style={{marginBottom:28,display:'flex',flexWrap:'wrap',gap:18,alignItems:'flex-end',justifyContent:'space-between'}}>
+              <div>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:4,textTransform:'uppercase',color:T.onSurfaceLow,marginBottom:6}}>Visão Geral</div>
+                <div style={{fontFamily:'Noto Serif,serif',fontSize:32,fontWeight:700,color:T.onSurface,lineHeight:1.15}}>Painel de Controle</div>
+                <div style={{fontSize:13,color:T.onSurfaceLow,marginTop:6}}>{new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
+              </div>
+              <div style={{display:'flex',gap:10,alignItems:'flex-end',flexWrap:'wrap'}}>
+                <div>
+                  <label style={{display:'block',fontSize:10,fontWeight:700,letterSpacing:2,textTransform:'uppercase',color:T.onSurfaceLow,marginBottom:4}}>De</label>
+                  <input type="date" value={periodoIni} max={periodoFim} onChange={e=>e.target.value&&setPeriodoIni(e.target.value)} className="inp" style={{padding:'9px 12px',fontSize:13,width:'auto'}}/>
+                </div>
+                <div>
+                  <label style={{display:'block',fontSize:10,fontWeight:700,letterSpacing:2,textTransform:'uppercase',color:T.onSurfaceLow,marginBottom:4}}>Até</label>
+                  <input type="date" value={periodoFim} min={periodoIni} max={todayISO()} onChange={e=>e.target.value&&setPeriodoFim(e.target.value)} className="inp" style={{padding:'9px 12px',fontSize:13,width:'auto'}}/>
+                </div>
+                <div style={{display:'flex',gap:6,paddingBottom:1}}>
+                  <button className="btn btn-ghost btn-sm" onClick={()=>{setPeriodoIni(todayISO());setPeriodoFim(todayISO())}}>Hoje</button>
+                  <button className="btn btn-ghost btn-sm" onClick={()=>{const d=new Date();setPeriodoIni(new Date(d.getFullYear(),d.getMonth(),1).toISOString().slice(0,10));setPeriodoFim(todayISO())}}>Mês</button>
+                </div>
+              </div>
+            </div>
+            <div className="au1" style={{marginTop:-14,marginBottom:16,fontSize:12,color:T.onSurfaceLow}}>
+              Resultados financeiros no período <strong style={{color:T.primary}}>{periodoLabel}</strong> · {agPeriodo.length} {agPeriodo.length===1?'atendimento':'atendimentos'}
             </div>
 
             {/* KPI ROW 1 */}
             <div className="kpi-grid au1">
               {[
-                {l:'Fat. Hoje',v:fmtCurrency(fatToday),bar:Math.min(100,fatToday/5000*100),delta:agToday.filter(a=>a.status==='completed').length+' finalizados'},
-                {l:'Fat. Mês',v:fmtCurrency(fatMonth),bar:Math.min(100,fatMonth/30000*100),delta:'acumulado no mês'},
-                {l:'Ticket Médio',v:fmtCurrency(avgTicket),bar:Math.min(100,avgTicket/200*100),delta:agDone.length+' atendimentos'},
-                {l:'Ocupação Hoje',v:fmtPct(occupancy),bar:occupancy,delta:agToday.length+' de '+profs.length+' prof.'},
+                {l:'Faturamento',v:fmtCurrency(fatPeriodo),bar:Math.min(100,fatPeriodo/5000*100),delta:mesmoDia?'no dia selecionado':'no período'},
+                {l:'Ticket Médio',v:fmtCurrency(ticketMedioPeriodo),bar:Math.min(100,ticketMedioPeriodo/200*100),delta:agPeriodo.length+' atendimentos'},
+                {l:'Receita Líquida',v:fmtCurrency(receitaLiquidaPeriodo),bar:Math.min(100,receitaLiquidaPeriodo/fatPeriodo*100||0),delta:'após comissões'},
+                {l:'Total Comissões',v:fmtCurrency(comissoesPeriodo),bar:Math.min(100,comissoesPeriodo/fatPeriodo*100||0),delta:'no período'},
               ].map(k=>(
                 <div key={k.l} className="kpi">
                   <div className="kpi-l">{k.l}</div>
@@ -1039,10 +1072,10 @@ function Admin({onLogout,salonName='Morgane Faoli Nail Style',adminName='Adminis
             {/* KPI ROW 2 */}
             <div className="kpi-grid au2">
               {[
-                {l:'Receita Líquida',v:fmtCurrency(netRevenue),bar:Math.min(100,netRevenue/fatTotal*100||0),delta:'após comissões'},
-                {l:'Total Comissões',v:fmtCurrency(totalComissions),bar:Math.min(100,totalComissions/fatTotal*100||0),delta:profs.length+' profissionais'},
-                {l:'Retenção de Clientes',v:fmtPct(retentionRate),bar:retentionRate,delta:retentionClientsCount+' de '+clients.length+' clientes'},
+                {l:'Fat. Hoje',v:fmtCurrency(fatToday),bar:Math.min(100,fatToday/5000*100),delta:agToday.filter(a=>a.status==='completed').length+' finalizados'},
+                {l:'Ocupação Hoje',v:fmtPct(occupancy),bar:occupancy,delta:agToday.length+' de '+profs.length+' prof.'},
                 {l:'Agendamentos Hoje',v:agToday.length,bar:Math.min(100,agToday.length/20*100),delta:agToday.filter(a=>a.status==='completed').length+' concluídos'},
+                {l:'Retenção de Clientes',v:fmtPct(retentionRate),bar:retentionRate,delta:retentionClientsCount+' de '+clients.length+' clientes'},
               ].map(k=>(
                 <div key={k.l} className="kpi">
                   <div className="kpi-l">{k.l}</div>
@@ -1071,10 +1104,10 @@ function Admin({onLogout,salonName='Morgane Faoli Nail Style',adminName='Adminis
 
               {/* Top serviços */}
               <div className="card">
-                <div className="card-hd"><span className="ch">Top Serviços</span></div>
+                <div className="card-hd"><span className="ch">Top Serviços</span><span style={{fontSize:11,color:T.onSurfaceLow}}>{periodoLabel}</span></div>
                 <div style={{padding:'0 0 10px'}}>
-                  {topSrvs.length===0?<div style={{padding:'18px 22px',color:T.onSurfaceLow,fontSize:13}}>Nenhum dado ainda</div>
-                  :topSrvs.map(([name,count],i)=>(
+                  {topSrvsPeriodo.length===0?<div style={{padding:'18px 22px',color:T.onSurfaceLow,fontSize:13}}>Nenhum dado no período</div>
+                  :topSrvsPeriodo.map(([name,count],i)=>(
                     <div key={name} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 22px',borderTop:i>0?`1px solid ${T.surfaceLow}`:'none'}}>
                       <div style={{width:22,height:22,borderRadius:6,background:T.primaryPale,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700,color:T.primary,flexShrink:0}}>{i+1}</div>
                       <div style={{flex:1,fontSize:13,fontWeight:500}}>{name}</div>
@@ -1088,10 +1121,10 @@ function Admin({onLogout,salonName='Morgane Faoli Nail Style',adminName='Adminis
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}} className="au4">
               {/* Top profissionais */}
               <div className="card">
-                <div className="card-hd"><span className="ch">Equipe</span></div>
+                <div className="card-hd"><span className="ch">Equipe</span><span style={{fontSize:11,color:T.onSurfaceLow}}>{periodoLabel}</span></div>
                 <div style={{padding:'0 0 10px'}}>
-                  {profRev.length===0?<div style={{padding:'18px 22px',color:T.onSurfaceLow,fontSize:13}}>Nenhum dado</div>
-                  :profRev.map((p,i)=>(
+                  {profRevPeriodo.length===0?<div style={{padding:'18px 22px',color:T.onSurfaceLow,fontSize:13}}>Nenhum dado</div>
+                  :profRevPeriodo.map((p,i)=>(
                     <div key={p.name} style={{display:'flex',alignItems:'center',gap:12,padding:'11px 22px',borderTop:i>0?`1px solid ${T.surfaceLow}`:'none'}}>
                       <div style={{width:32,height:32,borderRadius:'50%',background:`linear-gradient(135deg,${T.primaryLight},${T.primary})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,color:'white',flexShrink:0}}>{p.name[0]}</div>
                       <div style={{flex:1,minWidth:0}}>
