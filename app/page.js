@@ -4025,8 +4025,12 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
     .tt-cta:active{transform:scale(.98);}
     .tt-cta .c1{font-family:'Noto Serif',serif;font-size:21px;font-weight:700;letter-spacing:.3px;}
     .tt-cta .c2{font-size:13px;opacity:.92;}
-    .tt-exit{position:fixed;top:6px;left:6px;width:30px;height:30px;border-radius:50%;
-      background:transparent;border:none;cursor:pointer;opacity:0;z-index:5;}
+    .tt-exit{position:fixed;top:12px;right:12px;z-index:6;display:flex;align-items:center;gap:6px;
+      background:rgba(20,14,8,.55);border:1px solid rgba(244,234,214,.30);color:#f4ead6;
+      border-radius:22px;padding:9px 16px;font-family:'Manrope',sans-serif;font-size:12px;font-weight:700;
+      letter-spacing:.6px;cursor:pointer;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+      box-shadow:0 6px 18px rgba(0,0,0,.35);transition:background .18s,transform .18s;}
+    .tt-exit:active{transform:scale(.96);background:rgba(20,14,8,.8);}
     .tt-idcard{width:100%;max-width:420px;margin:auto;background:rgba(255,253,248,.98);
       border:1px solid rgba(226,181,105,.35);border-radius:26px;padding:34px 30px;
       box-shadow:0 40px 90px rgba(0,0,0,.5);color:#241d13;text-align:center;}
@@ -4078,7 +4082,7 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
       <style>{G}</style>
       <style>{TOTEM_CSS}</style>
       <div className="tt-wrap">
-        <button className="tt-exit" aria-label="Sair do totem" onClick={()=>{if(window.confirm('Sair do modo totem?'))onExit()}}/>
+        <button className="tt-exit" aria-label="Sair do totem" onClick={()=>{if(window.confirm('Sair do modo totem?'))onExit()}}>✕ Sair</button>
         <div className="tt-hd">
           <div className="tt-eyebrow">Bem-vinda ao</div>
           <div className="tt-name">{salonName}</div>
