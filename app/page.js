@@ -438,7 +438,7 @@ const Badge = ({tipo})=>
 // ══════════════════════════════════════════════════════
 // LOGIN
 // ══════════════════════════════════════════════════════
-function Login({onAdmin,onProf,onCliente,salonName='Morgane Faoli Nail Style'}){
+function Login({onAdmin,onProf,onCliente,onMesa,salonName='Morgane Faoli Nail Style'}){
   const [u,setU]=useState('')
   const [p,setP]=useState('')
   const [showP,setShowP]=useState(false)
@@ -455,6 +455,7 @@ function Login({onAdmin,onProf,onCliente,salonName='Morgane Faoli Nail Style'}){
       setLd(false)
       if(!json.ok){setErr(json.erro||'Usuário ou senha incorretos');return}
       if(json.perfil==='admin'){onAdmin(json.nome||json.dados?.full_name||'Administrador');return}
+      if(json.perfil==='mesa'){onMesa&&onMesa();return}
       if(json.perfil==='profissional'){onProf(json.dados);return}
       if(json.perfil==='cliente'){onCliente(json.dados);return}
     }catch(e){setLd(false);setErr('Erro de conexão. Tente novamente.')}
@@ -3718,12 +3719,29 @@ function MesaAdmin({toast2,onMesa}){
   const [saving,setSaving]=useState(false)
   const [upLoading,setUpLoading]=useState(false)
   const fileRef=useRef(null)
+  const [pwAdmin,setPwAdmin]=useState('')
+  const [pwTotem,setPwTotem]=useState('')
+  const [pwSaving,setPwSaving]=useState(false)
 
   useEffect(()=>{
     let vivo=true
     carregarMesa().then(c=>{if(vivo)setCfg(c)}).finally(()=>{if(vivo)setCarregando(false)})
     return()=>{vivo=false}
   },[])
+
+  async function salvarSenhaTotem(){
+    if(pwTotem.length<6){toast2('A senha do totem precisa de ao menos 6 caracteres.',false);return}
+    if(!pwAdmin){toast2('Digite sua senha de administrador para confirmar.',false);return}
+    setPwSaving(true)
+    try{
+      const res=await fetch('/api/alterar-senha',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tipo:'totem',senhaAtual:pwAdmin,senhaNova:pwTotem})})
+      const json=await res.json()
+      if(!json.ok){toast2(json.erro||'Não consegui salvar a senha.',false);setPwSaving(false);return}
+      setPwAdmin('');setPwTotem('')
+      toast2('Senha do totem definida! Use o usuário "totem" para entrar.',true)
+    }catch(e){toast2('Erro de conexão.',false)}
+    setPwSaving(false)
+  }
 
   const persist=async(next)=>{ setCfg(next); return await salvarMesa(next) }
 
@@ -3797,15 +3815,25 @@ function MesaAdmin({toast2,onMesa}){
 
   return(
     <div style={{maxWidth:680}}>
-      {/* INICIAR TOTEM */}
+      {/* ACESSO DO TOTEM */}
       <div className="card">
-        <div className="card-hd"><span className="ch">Modo Totem</span></div>
+        <div className="card-hd"><span className="ch">Acesso do totem</span></div>
         <div style={{padding:'0 22px 20px'}}>
           <div style={{fontSize:13,color:T.onSurfaceLow,lineHeight:1.6,marginBottom:14}}>
-            No tablet da bancada, toque no botão abaixo para transformar a tela num <b>totem vertical</b>: um carrossel com suas fotos e dicas roda sozinho, e a cliente pode tocar em <b>“Agendar”</b> para marcar o horário na hora. Para sair do totem, toque no cantinho superior esquerdo da tela.
+            O totem tem um <b>login próprio</b>, separado do seu. No tablet da bancada, saia da sua conta e entre com o usuário <b style={{color:T.primary}}>totem</b> e a senha definida aqui. Assim a cliente <b>nunca</b> tem como ver o financeiro ou os rendimentos — o totem só mostra a vitrine e o agendamento.
           </div>
-          <button onClick={onMesa} className="btn btn-primary" style={{justifyContent:'center',padding:'13px 18px',fontSize:13}}>
-            ▶ Iniciar modo Totem neste dispositivo
+          <label className="lbl">Sua senha de administrador (para confirmar)</label>
+          <input className="inp" type="password" value={pwAdmin} onChange={e=>setPwAdmin(e.target.value)} placeholder="Senha do admin"/>
+          <label className="lbl">Nova senha do totem</label>
+          <input className="inp" type="password" value={pwTotem} onChange={e=>setPwTotem(e.target.value)} placeholder="Mínimo 6 caracteres"/>
+          <button onClick={salvarSenhaTotem} disabled={pwSaving} className="btn btn-primary" style={{justifyContent:'center',padding:'12px 18px',fontSize:13,marginTop:12,opacity:pwSaving?.6:1,cursor:pwSaving?'not-allowed':'pointer'}}>
+            {pwSaving?'Salvando…':'Definir senha do totem'}
+          </button>
+          <div style={{...hint,marginTop:14,paddingTop:14,borderTop:`1px solid ${T.surfaceLow}`}}>
+            Já está no tablet e quer testar agora? Use o atalho abaixo (só aparece pra você, logada como admin):
+          </div>
+          <button onClick={onMesa} className="btn btn-ghost btn-sm" style={{marginTop:8}}>
+            ▶ Abrir o totem neste dispositivo
           </button>
         </div>
       </div>
@@ -4214,5 +4242,5 @@ export default function App(){
   if(mode==='admin')   return <Admin onLogout={logout} onMesa={enterMesa} salonName={salonName} adminName={adminName}/>
   if(mode==='prof'&&profData)   return <ProfPanel prof={profData} onLogout={logout}/>
   if(mode==='cliente'&&cliData) return <PortalCliente cliente={cliData} onLogout={logout} salonName={salonName}/>
-  return <Login onAdmin={loginAdmin} onProf={loginProf} onCliente={loginCli} salonName={salonName}/>
+  return <Login onAdmin={loginAdmin} onProf={loginProf} onCliente={loginCli} onMesa={enterMesa} salonName={salonName}/>
 }
