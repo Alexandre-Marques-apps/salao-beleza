@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 
 // ── Proxy de dados ─────────────────────────────────────
 // Imita a fatia da API do Supabase que o app usa, mas roteia todas as
@@ -161,6 +161,46 @@ async function carregarPortal(){
 }
 async function salvarPortal(cfg){
   const {error}=await supabase.from('salon_settings').upsert({key:'portal',value:JSON.stringify(cfg),updated_at:new Date().toISOString()})
+  return !error
+}
+
+// ── CONTEÚDO DO TOTEM / PERFIL MESA ───────────────────
+// Vitrine que roda no tablet da bancada: carrossel de fotos +
+// banners informativos, tudo editável pelo admin e guardado no
+// banco (salon_settings key='mesa'). As fotos ficam no Supabase
+// Storage (bucket 'mesa') — aqui guardamos só as URLs.
+const DEFAULT_MESA = {
+  intervalo: 7,          // segundos por slide
+  cta: {
+    titulo: 'Agende seu horário',
+    texto: 'Toque para escolher data, serviço e profissional',
+  },
+  fotos: [],             // [{url, path}]
+  banners: [
+    {ic:'🌙', titulo:'Cutícula se cuida, não se corta', texto:'Empurrada com técnica, ela protege a base da unha contra infecções e deixa o acabamento mais bonito.', ativo:true},
+    {ic:'💎', titulo:'Durabilidade de verdade', texto:'Unhas em gel duram de 3 a 4 semanas com o brilho intacto. Uma manutenção a cada 15–20 dias mantém tudo impecável.', ativo:true},
+    {ic:'🧼', titulo:'Higiene em primeiro lugar', texto:'Todos os materiais são esterilizados a cada atendimento. Sua saúde vem antes da estética, sempre.', ativo:true},
+    {ic:'💧', titulo:'Hidratação é o segredo', texto:'Passe óleo de cutícula todas as noites. Unhas hidratadas quebram menos e o esmalte adere muito melhor.', ativo:true},
+    {ic:'☀️', titulo:'Pequenos hábitos, unhas lindas', texto:'Use luvas ao lavar louça e evite usar as unhas como ferramenta. Isso prolonga bastante o seu esmalte.', ativo:true},
+    {ic:'🎨', titulo:'A cor certa pra você', texto:'Tons nude alongam os dedos; cores fortes valorizam mãos bronzeadas. A gente te ajuda a escolher.', ativo:true},
+    {ic:'🚫', titulo:'Nunca remova o gel em casa', texto:'Puxar arranca camadas da unha natural e enfraquece. A remoção correta é sempre aqui no salão.', ativo:true},
+    {ic:'🌿', titulo:'Mito: a unha precisa respirar', texto:'A saúde da unha vem da hidratação e do cuidado — não do ar. O esmalte não a sufoca.', ativo:true},
+    {ic:'💅', titulo:'O formato faz diferença', texto:'Quadrado, oval, amendoado… o formato certo equilibra o tamanho das mãos e combina com a sua rotina.', ativo:true},
+    {ic:'💛', titulo:'Seu momento de autocuidado', texto:'Cuidar das unhas é um tempo só seu. Aqui, cada detalhe é pensado pra você sair se sentindo linda.', ativo:true},
+  ],
+}
+async function carregarMesa(){
+  try{
+    const {data}=await supabase.from('salon_settings').select('value').eq('key','mesa').single()
+    if(data?.value){
+      const cfg=JSON.parse(data.value)
+      return {...DEFAULT_MESA,...cfg,cta:{...DEFAULT_MESA.cta,...(cfg.cta||{})}}
+    }
+  }catch{}
+  return DEFAULT_MESA
+}
+async function salvarMesa(cfg){
+  const {error}=await supabase.from('salon_settings').upsert({key:'mesa',value:JSON.stringify(cfg),updated_at:new Date().toISOString()})
   return !error
 }
 // Texto com efeito dourado metálico (usado no hero do portal)
@@ -513,7 +553,7 @@ function Login({onAdmin,onProf,onCliente,salonName='Morgane Faoli Nail Style'}){
 // ══════════════════════════════════════════════════════
 // ADMIN PANEL
 // ══════════════════════════════════════════════════════
-function Admin({onLogout,salonName='Morgane Faoli Nail Style',adminName='Administrador'}){
+function Admin({onLogout,onMesa,salonName='Morgane Faoli Nail Style',adminName='Administrador'}){
   const [tab,setTab]=useState('dashboard')
   const [sb,setSb]=useState(false)
   const [agDate,setAgDate]=useState(todayStr())
@@ -943,6 +983,7 @@ function Admin({onLogout,salonName='Morgane Faoli Nail Style',adminName='Adminis
     {id:'financeiro',label:'Financeiro',icon:'◎'},
     {id:'funcionamento',label:'Funcionamento',icon:'🕐'},
     {id:'portal',label:'Portal / Conteúdo',icon:'📣'},
+    {id:'mesa',label:'Totem / Mesa',icon:'🖥'},
     {id:'minha_senha',label:'Minha Senha',icon:'🔑'},
   ]
 
@@ -1619,6 +1660,10 @@ function Admin({onLogout,salonName='Morgane Faoli Nail Style',adminName='Adminis
 
           {tab==='portal'&&(<div className="au">
             <PortalAdmin toast2={toast2}/>
+          </div>)}
+
+          {tab==='mesa'&&(<div className="au">
+            <MesaAdmin toast2={toast2} onMesa={onMesa}/>
           </div>)}
 
           {tab==='minha_senha'&&(<div className="au">
@@ -3665,6 +3710,383 @@ function PortalAdmin({toast2}){
 }
 
 // ══════════════════════════════════════════════════════
+// EDITOR DO TOTEM / PERFIL MESA (admin)
+// ══════════════════════════════════════════════════════
+function MesaAdmin({toast2,onMesa}){
+  const [cfg,setCfg]=useState(DEFAULT_MESA)
+  const [carregando,setCarregando]=useState(true)
+  const [saving,setSaving]=useState(false)
+  const [upLoading,setUpLoading]=useState(false)
+  const fileRef=useRef(null)
+
+  useEffect(()=>{
+    let vivo=true
+    carregarMesa().then(c=>{if(vivo)setCfg(c)}).finally(()=>{if(vivo)setCarregando(false)})
+    return()=>{vivo=false}
+  },[])
+
+  const persist=async(next)=>{ setCfg(next); return await salvarMesa(next) }
+
+  // Redimensiona a imagem no navegador antes de enviar (mais leve e nítida no tablet)
+  function redimensiona(file){
+    return new Promise((resolve,reject)=>{
+      const r=new FileReader()
+      r.onerror=()=>reject(new Error('read'))
+      r.onload=()=>{
+        const img=new Image()
+        img.onerror=()=>reject(new Error('img'))
+        img.onload=()=>{
+          const maxW=1200
+          const escala=Math.min(1,maxW/img.width)
+          const w=Math.round(img.width*escala),h=Math.round(img.height*escala)
+          const c=document.createElement('canvas');c.width=w;c.height=h
+          c.getContext('2d').drawImage(img,0,0,w,h)
+          resolve(c.toDataURL('image/jpeg',0.85))
+        }
+        img.src=r.result
+      }
+      r.readAsDataURL(file)
+    })
+  }
+
+  async function addFoto(e){
+    const f=e.target.files&&e.target.files[0]; e.target.value=''
+    if(!f)return
+    if((cfg.fotos||[]).length>=20){toast2('Máximo de 20 fotos.',false);return}
+    setUpLoading(true)
+    try{
+      const dataUrl=await redimensiona(f)
+      const res=await fetch('/api/mesa-upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dataUrl})})
+      const json=await res.json()
+      if(!json.ok){toast2(json.erro||'Falha ao enviar a foto.',false);setUpLoading(false);return}
+      const ok=await persist({...cfg,fotos:[...(cfg.fotos||[]),{url:json.url,path:json.path}]})
+      toast2(ok?'Foto adicionada!':'Foto enviada, mas falhou ao salvar.',ok)
+    }catch(err){toast2('Não consegui processar a imagem.',false)}
+    setUpLoading(false)
+  }
+
+  async function removeFoto(i){
+    const foto=(cfg.fotos||[])[i]
+    await persist({...cfg,fotos:(cfg.fotos||[]).filter((_,idx)=>idx!==i)})
+    if(foto&&foto.path){ fetch('/api/mesa-upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete',path:foto.path})}).catch(()=>{}) }
+    toast2('Foto removida.',true)
+  }
+
+  function moveFoto(i,dir){
+    const arr=[...(cfg.fotos||[])]; const j=i+dir
+    if(j<0||j>=arr.length)return
+    const tmp=arr[i];arr[i]=arr[j];arr[j]=tmp
+    persist({...cfg,fotos:arr})
+  }
+
+  const setBanner=(i,k,v)=>setCfg(c=>{const b=[...(c.banners||[])];b[i]={...b[i],[k]:v};return{...c,banners:b}})
+  const addBanner=()=>setCfg(c=>({...c,banners:[...(c.banners||[]),{ic:'💡',titulo:'',texto:'',ativo:true}]}))
+  const removeBanner=i=>setCfg(c=>({...c,banners:(c.banners||[]).filter((_,idx)=>idx!==i)}))
+  const setCta=(k,v)=>setCfg(c=>({...c,cta:{...c.cta,[k]:v}}))
+
+  async function salvar(){
+    setSaving(true)
+    const ok=await salvarMesa(cfg)
+    setSaving(false)
+    toast2(ok?'Conteúdo do totem salvo!':'Falha ao salvar.',ok)
+  }
+
+  const ta={width:'100%',minHeight:70,padding:'11px 13px',background:T.surfaceLow,border:'1px solid transparent',borderRadius:12,fontFamily:'Manrope,sans-serif',fontSize:14,color:T.onSurface,outline:'none',boxSizing:'border-box',resize:'vertical',lineHeight:1.55,marginTop:2}
+  const hint={fontSize:11,color:T.onSurfaceLow,marginTop:6,lineHeight:1.5}
+  const nFotos=(cfg.fotos||[]).length
+
+  return(
+    <div style={{maxWidth:680}}>
+      {/* INICIAR TOTEM */}
+      <div className="card">
+        <div className="card-hd"><span className="ch">Modo Totem</span></div>
+        <div style={{padding:'0 22px 20px'}}>
+          <div style={{fontSize:13,color:T.onSurfaceLow,lineHeight:1.6,marginBottom:14}}>
+            No tablet da bancada, toque no botão abaixo para transformar a tela num <b>totem vertical</b>: um carrossel com suas fotos e dicas roda sozinho, e a cliente pode tocar em <b>“Agendar”</b> para marcar o horário na hora. Para sair do totem, toque no cantinho superior esquerdo da tela.
+          </div>
+          <button onClick={onMesa} className="btn btn-primary" style={{justifyContent:'center',padding:'13px 18px',fontSize:13}}>
+            ▶ Iniciar modo Totem neste dispositivo
+          </button>
+        </div>
+      </div>
+
+      {/* FOTOS */}
+      <div className="card">
+        <div className="card-hd"><span className="ch">Fotos do carrossel</span><span style={{fontSize:11,color:T.onSurfaceLow}}>{nFotos}/20</span></div>
+        <div style={{padding:'0 22px 20px'}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginTop:4}}>
+            {(cfg.fotos||[]).map((f,i)=>(
+              <div key={f.path||i} style={{position:'relative',borderRadius:12,overflow:'hidden',aspectRatio:'3 / 4',background:T.surfaceLow}}>
+                <img src={f.url} alt="" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
+                <button onClick={()=>removeFoto(i)} style={{position:'absolute',top:4,right:4,border:'none',borderRadius:8,width:24,height:24,background:'rgba(255,255,255,.92)',color:T.danger,fontWeight:700,cursor:'pointer',fontSize:12,lineHeight:1}}>✕</button>
+                <div style={{position:'absolute',bottom:4,left:4,display:'flex',gap:4}}>
+                  {i>0&&<button onClick={()=>moveFoto(i,-1)} style={{border:'none',borderRadius:7,width:22,height:22,background:'rgba(255,255,255,.92)',color:T.onSurface,cursor:'pointer',fontSize:12,lineHeight:1}}>←</button>}
+                  {i<nFotos-1&&<button onClick={()=>moveFoto(i,1)} style={{border:'none',borderRadius:7,width:22,height:22,background:'rgba(255,255,255,.92)',color:T.onSurface,cursor:'pointer',fontSize:12,lineHeight:1}}>→</button>}
+                </div>
+              </div>
+            ))}
+            {nFotos<20&&(
+              <button onClick={()=>fileRef.current&&fileRef.current.click()} disabled={upLoading} style={{aspectRatio:'3 / 4',border:`1.5px dashed ${T.surfaceHigh}`,borderRadius:12,background:T.surfaceLow,color:T.primary,fontWeight:600,fontSize:12,cursor:upLoading?'wait':'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,opacity:upLoading?.6:1}}>
+                <span style={{fontSize:22,lineHeight:1}}>{upLoading?'…':'＋'}</span>{upLoading?'Enviando':'Foto'}
+              </button>
+            )}
+          </div>
+          <input ref={fileRef} type="file" accept="image/*" onChange={addFoto} style={{display:'none'}}/>
+          <div style={hint}>Fotos verticais (retrato) ficam melhores no totem. Use as setas para reordenar. As fotos são salvas na nuvem automaticamente.</div>
+        </div>
+      </div>
+
+      {/* BANNERS */}
+      <div className="card">
+        <div className="card-hd"><span className="ch">Banners informativos</span><span style={{fontSize:11,color:T.onSurfaceLow}}>{(cfg.banners||[]).filter(b=>b.ativo).length} ativos</span></div>
+        <div style={{padding:'0 22px 20px'}}>
+          <div style={{...hint,marginTop:0,marginBottom:12}}>Textos que aparecem entre as fotos (benefícios, cuidados, dicas). Desligue os que não quiser exibir.</div>
+          {(cfg.banners||[]).map((b,i)=>(
+            <div key={i} style={{border:`1px solid ${T.surfaceLow}`,borderRadius:14,padding:12,marginBottom:10,background:b.ativo?T.surfaceWhite:T.surfaceLow,opacity:b.ativo?1:.6}}>
+              <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:8}}>
+                <input className="inp" style={{width:56,textAlign:'center',padding:'11px 6px'}} value={b.ic||''} onChange={e=>setBanner(i,'ic',e.target.value)} placeholder="💡"/>
+                <input className="inp" style={{flex:1}} value={b.titulo||''} onChange={e=>setBanner(i,'titulo',e.target.value)} placeholder="Título do banner"/>
+                <div onClick={()=>setBanner(i,'ativo',!b.ativo)} style={{width:44,height:24,borderRadius:12,cursor:'pointer',background:b.ativo?T.primary:T.surfaceHigh,position:'relative',flexShrink:0}}>
+                  <div style={{position:'absolute',top:3,left:b.ativo?23:3,width:18,height:18,borderRadius:'50%',background:'#fff',transition:'left .2s',boxShadow:'0 1px 4px rgba(0,0,0,.2)'}}/>
+                </div>
+                <button onClick={()=>removeBanner(i)} style={{border:'none',background:'none',color:T.danger,cursor:'pointer',fontSize:16,padding:4,flexShrink:0}}>✕</button>
+              </div>
+              <textarea style={ta} value={b.texto||''} onChange={e=>setBanner(i,'texto',e.target.value)} placeholder="Texto do banner"/>
+            </div>
+          ))}
+          <button onClick={addBanner} className="btn btn-ghost btn-sm" style={{marginTop:4}}>＋ Adicionar banner</button>
+        </div>
+      </div>
+
+      {/* BOTÃO / RITMO */}
+      <div className="card">
+        <div className="card-hd"><span className="ch">Botão de agendamento e ritmo</span></div>
+        <div style={{padding:'0 22px 20px'}}>
+          <label className="lbl">Título do botão</label>
+          <input className="inp" value={cfg.cta?.titulo||''} onChange={e=>setCta('titulo',e.target.value)} placeholder="Ex: Agende seu horário"/>
+          <label className="lbl">Texto de apoio</label>
+          <input className="inp" value={cfg.cta?.texto||''} onChange={e=>setCta('texto',e.target.value)} placeholder="Ex: Toque para escolher data e serviço"/>
+          <label className="lbl">Tempo de cada slide: {Math.max(3,Number(cfg.intervalo)||7)}s</label>
+          <input type="range" min={3} max={15} step={1} value={Math.max(3,Number(cfg.intervalo)||7)} onChange={e=>setCfg(c=>({...c,intervalo:Number(e.target.value)}))} style={{width:'100%',accentColor:T.primary}}/>
+        </div>
+      </div>
+
+      <button onClick={salvar} disabled={carregando||saving} className="btn btn-primary" style={{width:'100%',justifyContent:'center',padding:14,fontSize:13,opacity:(carregando||saving)?.6:1,cursor:(carregando||saving)?'not-allowed':'pointer'}}>
+        {carregando?'Carregando…':saving?'Salvando…':'Salvar conteúdo do totem'}
+      </button>
+      <div style={{marginTop:10,fontSize:11,color:T.onSurfaceLow,textAlign:'center'}}>
+        As fotos já são salvas ao subir. Este botão salva os banners, o botão e o ritmo do slideshow.
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════
+// TOTEM / PERFIL MESA (tela do tablet)
+// ══════════════════════════════════════════════════════
+function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
+  const [cfg,setCfg]=useState(DEFAULT_MESA)
+  const [view,setView]=useState('display')   // display | id | cliente
+  const [idView,setIdView]=useState('phone') // phone | nome
+  const [phone,setPhone]=useState('')
+  const [nome,setNome]=useState('')
+  const [cli,setCli]=useState(null)
+  const [err,setErr]=useState('')
+  const [loading,setLoading]=useState(false)
+  const [idx,setIdx]=useState(0)
+
+  useEffect(()=>{
+    let vivo=true
+    const load=()=>carregarMesa().then(c=>{if(vivo)setCfg(c)})
+    load()
+    const t=setInterval(load,5*60*1000) // atualiza o conteúdo a cada 5 min
+    return()=>{vivo=false;clearInterval(t)}
+  },[])
+
+  const fotos=(cfg.fotos||[]).filter(f=>f&&f.url)
+  const banners=(cfg.banners||[]).filter(b=>b&&b.ativo&&(b.titulo||b.texto))
+  const slides=useMemo(()=>{
+    const arr=[];let fi=0,bi=0
+    while(fi<fotos.length||bi<banners.length){
+      if(fi<fotos.length)arr.push({type:'foto',data:fotos[fi++]})
+      if(fi<fotos.length)arr.push({type:'foto',data:fotos[fi++]})
+      if(bi<banners.length)arr.push({type:'banner',data:banners[bi++]})
+    }
+    return arr.length?arr:[{type:'vazio'}]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[cfg])
+
+  useEffect(()=>{ setIdx(i=>i%Math.max(1,slides.length)) },[slides.length])
+
+  useEffect(()=>{
+    if(view!=='display'||slides.length<=1)return
+    const secs=Math.max(3,Number(cfg.intervalo)||7)
+    const t=setInterval(()=>setIdx(i=>(i+1)%slides.length),secs*1000)
+    return()=>clearInterval(t)
+  },[view,slides.length,cfg.intervalo])
+
+  // Se a cliente parar no meio do agendamento, volta ao totem sozinho
+  useEffect(()=>{
+    if(view==='display')return
+    let t
+    const reset=()=>{clearTimeout(t);t=setTimeout(voltarTotem,120000)}
+    reset()
+    window.addEventListener('pointerdown',reset);window.addEventListener('keydown',reset)
+    return()=>{clearTimeout(t);window.removeEventListener('pointerdown',reset);window.removeEventListener('keydown',reset)}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[view])
+
+  function voltarTotem(){setView('display');setIdView('phone');setPhone('');setNome('');setCli(null);setErr('')}
+  function abrirAgendar(){setErr('');setPhone('');setNome('');setIdView('phone');setView('id')}
+
+  async function identificar(){
+    if(phone.replace(/\D/g,'').length<8){setErr('Informe um telefone válido, com DDD.');return}
+    setLoading(true);setErr('')
+    try{
+      const res=await fetch('/api/mesa-cliente',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone})})
+      const json=await res.json();setLoading(false)
+      if(!json.ok){setErr(json.erro||'Não consegui verificar. Tente de novo.');return}
+      if(json.cliente){setCli(json.cliente);setView('cliente');return}
+      if(json.novo){setIdView('nome');return}
+    }catch(e){setLoading(false);setErr('Erro de conexão. Tente novamente.')}
+  }
+  async function cadastrar(){
+    if(nome.trim().length<2){setErr('Digite seu nome, por favor.');return}
+    setLoading(true);setErr('')
+    try{
+      const res=await fetch('/api/mesa-cliente',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,nome:nome.trim()})})
+      const json=await res.json();setLoading(false)
+      if(!json.ok||!json.cliente){setErr(json.erro||'Não consegui cadastrar. Tente de novo.');return}
+      setCli(json.cliente);setView('cliente')
+    }catch(e){setLoading(false);setErr('Erro de conexão. Tente novamente.')}
+  }
+
+  // ── Agendamento: reaproveita todo o portal da cliente ──
+  if(view==='cliente'&&cli){
+    return <PortalCliente cliente={cli} onLogout={voltarTotem} salonName={salonName}/>
+  }
+
+  const TOTEM_CSS=`
+    body{background:
+      radial-gradient(120% 90% at 100% 0%,rgba(226,181,105,.20),transparent 55%),
+      radial-gradient(110% 80% at 0% 100%,rgba(189,111,140,.14),transparent 55%),
+      linear-gradient(160deg,#2b2013 0%,#1a130b 55%,#120d07 100%)!important;}
+    .tt-wrap{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:center;
+      padding:26px 18px 22px;position:relative;color:#f4ead6;box-sizing:border-box;}
+    .tt-hd{text-align:center;margin-bottom:12px;}
+    .tt-eyebrow{font-size:10px;font-weight:800;letter-spacing:5px;text-transform:uppercase;color:#c99f52;}
+    .tt-name{font-family:'Parisienne',cursive;font-size:40px;line-height:1.05;color:#f4ead6;margin-top:2px;}
+    .tt-stage{position:relative;width:100%;max-width:560px;flex:1;min-height:0;border-radius:26px;overflow:hidden;
+      box-shadow:0 30px 70px rgba(0,0,0,.5);border:1px solid rgba(226,181,105,.28);background:#1c150d;}
+    .tt-slide{position:absolute;inset:0;opacity:0;transition:opacity 1s ease;pointer-events:none;}
+    .tt-slide.on{opacity:1;}
+    .tt-slide img{width:100%;height:100%;object-fit:cover;display:block;}
+    .tt-banner{padding:44px 34px;text-align:center;display:flex;flex-direction:column;align-items:center;
+      justify-content:center;height:100%;box-sizing:border-box;
+      background:radial-gradient(120% 100% at 50% 0%,rgba(226,181,105,.12),transparent 60%),linear-gradient(160deg,#241a0f,#171009);}
+    .tt-ic{font-size:52px;margin-bottom:16px;}
+    .tt-tt{font-family:'Noto Serif',serif;font-size:27px;font-weight:700;color:#f6d99a;line-height:1.2;margin-bottom:13px;}
+    .tt-tx{font-size:17px;line-height:1.6;color:#e7dcc6;max-width:420px;}
+    .tt-dots{display:flex;gap:6px;margin:14px 0 12px;flex-wrap:wrap;justify-content:center;max-width:560px;}
+    .tt-dots span{width:7px;height:7px;border-radius:50%;background:rgba(244,234,214,.26);transition:all .3s;}
+    .tt-dots span.on{background:#e2b569;width:22px;border-radius:4px;}
+    .tt-cta{width:100%;max-width:560px;border:none;border-radius:20px;padding:19px;cursor:pointer;
+      background:linear-gradient(135deg,#5c390e,#8a5719 45%,#e2b569);color:#fff;
+      box-shadow:0 14px 34px rgba(138,87,25,.5);display:flex;flex-direction:column;gap:3px;align-items:center;
+      transition:transform .18s;}
+    .tt-cta:active{transform:scale(.98);}
+    .tt-cta .c1{font-family:'Noto Serif',serif;font-size:21px;font-weight:700;letter-spacing:.3px;}
+    .tt-cta .c2{font-size:13px;opacity:.92;}
+    .tt-exit{position:fixed;top:6px;left:6px;width:30px;height:30px;border-radius:50%;
+      background:transparent;border:none;cursor:pointer;opacity:0;z-index:5;}
+    .tt-idcard{width:100%;max-width:420px;margin:auto;background:rgba(255,253,248,.98);
+      border:1px solid rgba(226,181,105,.35);border-radius:26px;padding:34px 30px;
+      box-shadow:0 40px 90px rgba(0,0,0,.5);color:#241d13;text-align:center;}
+    .tt-idtitle{font-family:'Noto Serif',serif;font-size:27px;font-weight:700;margin:2px 0 6px;}
+    .tt-idsub{font-size:14px;color:#8a7a63;margin-bottom:22px;line-height:1.5;}
+    .tt-input{width:100%;border:none;border-bottom:1.5px solid #e3d8c4;padding:13px 2px;text-align:center;
+      font-family:'Manrope',sans-serif;font-size:20px;color:#241d13;outline:none;background:transparent;
+      transition:border-color .25s;box-sizing:border-box;margin-bottom:18px;}
+    .tt-input:focus{border-bottom-color:#e2b569;}
+    .tt-err{color:#b23b4e;font-size:13px;margin-bottom:14px;}
+    .tt-back{position:fixed;top:14px;left:14px;background:rgba(255,255,255,.12);border:1px solid rgba(244,234,214,.25);
+      color:#f4ead6;border-radius:20px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;z-index:5;}
+  `
+
+  // ── Tela de identificação (telefone → nome) ──
+  if(view==='id'){
+    return(
+      <>
+        <style>{G}</style>
+        <style>{TOTEM_CSS}</style>
+        <div className="tt-wrap">
+          <button className="tt-back" onClick={voltarTotem}>← Voltar</button>
+          <div className="tt-idcard">
+            <div className="tt-eyebrow">{salonName}</div>
+            <div className="tt-idtitle">{idView==='phone'?'Vamos agendar':'Seja bem-vinda! 💛'}</div>
+            <div className="tt-idsub">{idView==='phone'?'Informe seu telefone para começar':'É seu primeiro agendamento por aqui. Como podemos te chamar?'}</div>
+            {idView==='phone'?(
+              <input className="tt-input" inputMode="tel" autoFocus placeholder="(41) 90000-0000"
+                value={phone} onChange={e=>{setPhone(e.target.value);setErr('')}}
+                onKeyDown={e=>e.key==='Enter'&&identificar()}/>
+            ):(
+              <input className="tt-input" autoFocus placeholder="Seu nome"
+                value={nome} onChange={e=>{setNome(e.target.value);setErr('')}}
+                onKeyDown={e=>e.key==='Enter'&&cadastrar()}/>
+            )}
+            {err&&<div className="tt-err">{err}</div>}
+            <button className="tt-cta" onClick={idView==='phone'?identificar:cadastrar} disabled={loading}>
+              <span className="c1">{loading?'Aguarde…':(idView==='phone'?'Continuar':'Começar a agendar')}</span>
+            </button>
+          </div>
+        </div>
+      </>
+    )
+  }
+
+  // ── Slideshow (vitrine) ──
+  return(
+    <>
+      <style>{G}</style>
+      <style>{TOTEM_CSS}</style>
+      <div className="tt-wrap">
+        <button className="tt-exit" aria-label="Sair do totem" onClick={()=>{if(window.confirm('Sair do modo totem?'))onExit()}}/>
+        <div className="tt-hd">
+          <div className="tt-eyebrow">Bem-vinda ao</div>
+          <div className="tt-name">{salonName}</div>
+        </div>
+        <div className="tt-stage">
+          {slides.map((s,i)=>(
+            <div key={i} className={'tt-slide'+(i===idx?' on':'')}>
+              {s.type==='foto'&&<img src={s.data.url} alt=""/>}
+              {s.type==='banner'&&(
+                <div className="tt-banner">
+                  <div className="tt-ic">{s.data.ic}</div>
+                  <div className="tt-tt">{s.data.titulo}</div>
+                  <div className="tt-tx">{s.data.texto}</div>
+                </div>
+              )}
+              {s.type==='vazio'&&(
+                <div className="tt-banner">
+                  <div className="tt-ic">💅</div>
+                  <div className="tt-tt">Morgane Faoli Nail Style</div>
+                  <div className="tt-tx">Adicione fotos e banners no painel para exibir aqui.</div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="tt-dots">{slides.map((_,i)=><span key={i} className={i===idx?'on':''}/>)}</div>
+        <button className="tt-cta" onClick={abrirAgendar}>
+          <span className="c1">{cfg.cta?.titulo||'Agende seu horário'}</span>
+          {(cfg.cta?.texto)&&<span className="c2">{cfg.cta.texto}</span>}
+        </button>
+      </div>
+    </>
+  )
+}
+
+// ══════════════════════════════════════════════════════
 // COMPONENTE ALTERAR SENHA ADMIN
 // ══════════════════════════════════════════════════════
 function AdminSenhaComp({toast2}){
@@ -3799,6 +4221,12 @@ export default function App(){
     localStorage.removeItem('salao_prof')
     setCliData(c);setMode('cliente')
   }
+  function enterMesa(){
+    localStorage.setItem('salao_mode','mesa')
+    localStorage.removeItem('salao_prof')
+    localStorage.removeItem('salao_cli')
+    setMode('mesa')
+  }
   function logout(){
     localStorage.removeItem('salao_mode')
     localStorage.removeItem('salao_prof')
@@ -3807,7 +4235,8 @@ export default function App(){
     setMode(null);setProfData(null);setCliData(null)
   }
 
-  if(mode==='admin')   return <Admin onLogout={logout} salonName={salonName} adminName={adminName}/>
+  if(mode==='mesa')    return <Mesa onExit={logout} salonName={salonName}/>
+  if(mode==='admin')   return <Admin onLogout={logout} onMesa={enterMesa} salonName={salonName} adminName={adminName}/>
   if(mode==='prof'&&profData)   return <ProfPanel prof={profData} onLogout={logout}/>
   if(mode==='cliente'&&cliData) return <PortalCliente cliente={cliData} onLogout={logout} salonName={salonName}/>
   return <Login onAdmin={loginAdmin} onProf={loginProf} onCliente={loginCli} salonName={salonName}/>

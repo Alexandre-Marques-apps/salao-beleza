@@ -40,7 +40,7 @@ const DELETABLE = new Set(['salon_clients', 'salon_blocks'])
 
 // Chaves de salon_settings que o cliente pode ler/escrever por aqui
 // (admin_senha_hash é tratado só pelas rotas de login/senha)
-const SETTINGS_KEYS = new Set(['funcionamento', 'portal'])
+const SETTINGS_KEYS = new Set(['funcionamento', 'portal', 'mesa'])
 
 function pick(obj, cols) {
   const out = {}
