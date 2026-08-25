@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import bcrypt from 'bcryptjs'
 
 const ADMIN_USER = 'Alexandre'
+const TOTEM_USER = 'totem'
 const MAX_TENT = 5
 const BLOQUEIO_MS = 15 * 60 * 1000
 const tentativas = {}
@@ -99,6 +100,46 @@ export async function POST(req) {
     }
     resetaTentativas(ip)
     return Response.json({ ok: true, perfil: 'admin', nome: ADMIN_USER })
+  }
+
+  // ── TOTEM / MESA (login exclusivo do tablet da bancada) ──
+  // Nunca dá acesso a admin/financeiro — só ao modo vitrine + agendamento.
+  if (usuario.trim().toLowerCase() === TOTEM_USER) {
+    const { data: setting } = await supabase
+      .from('salon_settings')
+      .select('value')
+      .eq('key', 'totem_senha_hash')
+      .single()
+
+    let ok = false
+    if (setting?.value) {
+      ok = await bcrypt.compare(senha, setting.value)
+    } else {
+      // Primeira vez: aceita a senha padrão do env e grava o hash
+      const senhaEnv = process.env.TOTEM_SENHA || 'totem123'
+      ok = senha === senhaEnv
+      if (ok) {
+        const hash = await bcrypt.hash(senhaEnv, 12)
+        await supabase.from('salon_settings').upsert({
+          key: 'totem_senha_hash',
+          value: hash,
+          updated_at: new Date().toISOString()
+        })
+      }
+    }
+
+    if (!ok) {
+      registraFalha(ip)
+      const r = qtdRestantes(ip)
+      return Response.json({
+        ok: false,
+        erro: r > 0
+          ? `Senha incorreta. ${r} tentativa(s) restante(s).`
+          : 'Acesso bloqueado por 15 minutos.'
+      }, { status: 401 })
+    }
+    resetaTentativas(ip)
+    return Response.json({ ok: true, perfil: 'mesa' })
   }
 
   // ── PROFISSIONAL ───────────────────────────────────

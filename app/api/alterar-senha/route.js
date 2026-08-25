@@ -50,6 +50,34 @@ export async function POST(req) {
     return Response.json({ ok: true })
   }
 
+  // ── TOTEM ──────────────────────────────────────────
+  // Só o admin define a senha do totem: autoriza com a própria senha de admin.
+  if (tipo === 'totem') {
+    const { data: setting } = await supabase
+      .from('salon_settings')
+      .select('value')
+      .eq('key', 'admin_senha_hash')
+      .single()
+
+    let ok = false
+    if (setting?.value) {
+      ok = await bcrypt.compare(senhaAtual, setting.value)
+    } else {
+      const senhaEnv = process.env.ADMIN_SENHA || '123456'
+      ok = senhaAtual === senhaEnv
+    }
+    if (!ok) return Response.json({ ok: false, erro: 'Senha do administrador incorreta' }, { status: 401 })
+
+    const novoHash = await bcrypt.hash(senhaNova, 12)
+    await supabase.from('salon_settings').upsert({
+      key: 'totem_senha_hash',
+      value: novoHash,
+      updated_at: new Date().toISOString()
+    })
+
+    return Response.json({ ok: true })
+  }
+
   // ── PROFISSIONAL ───────────────────────────────────
   if (tipo === 'profissional') {
     const { data: prof } = await supabase
