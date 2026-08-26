@@ -244,7 +244,7 @@ const T = {
 
 // ── GLOBAL CSS ─────────────────────────────────────────
 const G = `
-@import url('https://fonts.googleapis.com/css2?family=Noto+Serif:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Manrope:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Manrope:wght@300;400;500;600;700;800&family=Parisienne&display=swap');
 :root{
   --shadow-sm:0 1px 2px rgba(70,45,15,.05),0 2px 6px rgba(70,45,15,.05);
   --shadow-md:0 2px 6px rgba(70,45,15,.05),0 10px 26px rgba(70,45,15,.08);
