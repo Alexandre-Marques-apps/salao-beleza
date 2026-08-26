@@ -3998,23 +3998,23 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
     .tt-hd{text-align:center;margin-bottom:12px;}
     .tt-eyebrow{font-size:10px;font-weight:800;letter-spacing:5px;text-transform:uppercase;color:#c99f52;}
     .tt-name{font-family:'Parisienne',cursive;font-size:40px;line-height:1.05;color:#f4ead6;margin-top:2px;}
-    /* split lado a lado: fotos 60% (esq) + cards 40% (dir) */
+    /* split lado a lado: fotos 35% (esq) + cards 65% (dir) */
     .tt-split{display:flex;gap:16px;width:100%;max-width:1100px;flex:1;min-height:0;}
-    .tt-left{flex:0 0 60%;max-width:60%;position:relative;border-radius:26px;overflow:hidden;
+    .tt-left{flex:0 0 35%;max-width:35%;position:relative;border-radius:26px;overflow:hidden;
       box-shadow:0 30px 70px rgba(0,0,0,.5);border:1px solid rgba(226,181,105,.28);
       background:radial-gradient(120% 100% at 50% 0%,rgba(226,181,105,.10),transparent 60%),linear-gradient(160deg,#211810,#141009);}
-    .tt-right{flex:1 1 40%;max-width:40%;position:relative;border-radius:26px;overflow:hidden;
+    .tt-right{flex:1 1 65%;max-width:65%;position:relative;border-radius:26px;overflow:hidden;
       box-shadow:0 30px 70px rgba(0,0,0,.5);border:1px solid rgba(226,181,105,.28);
       background:radial-gradient(120% 100% at 50% 0%,rgba(226,181,105,.12),transparent 60%),linear-gradient(160deg,#241a0f,#171009);}
     .tt-slide{position:absolute;inset:0;opacity:0;transition:opacity 1s ease;pointer-events:none;}
     .tt-slide.on{opacity:1;}
-    /* foto inteira, sem cortar */
-    .tt-slide img{width:100%;height:100%;object-fit:contain;display:block;}
-    .tt-banner{padding:38px 28px;text-align:center;display:flex;flex-direction:column;align-items:center;
+    /* foto preenche todo o espaço, com cantos arredondados */
+    .tt-slide img{width:100%;height:100%;object-fit:cover;display:block;border-radius:26px;}
+    .tt-banner{padding:44px 40px;text-align:center;display:flex;flex-direction:column;align-items:center;
       justify-content:center;height:100%;box-sizing:border-box;}
-    .tt-ic{font-size:50px;margin-bottom:16px;}
-    .tt-tt{font-family:'Noto Serif',serif;font-size:25px;font-weight:700;color:#f6d99a;line-height:1.22;margin-bottom:13px;}
-    .tt-tx{font-size:17px;line-height:1.6;color:#e7dcc6;max-width:360px;}
+    .tt-ic{font-size:56px;margin-bottom:18px;}
+    .tt-tt{font-family:'Noto Serif',serif;font-size:30px;font-weight:700;color:#f6d99a;line-height:1.2;margin-bottom:16px;}
+    .tt-tx{font-size:19px;line-height:1.6;color:#e7dcc6;max-width:520px;}
     .tt-dots{position:absolute;left:0;right:0;bottom:12px;display:flex;gap:6px;flex-wrap:wrap;justify-content:center;z-index:2;}
     .tt-dots span{width:7px;height:7px;border-radius:50%;background:rgba(244,234,214,.28);transition:all .3s;}
     .tt-dots span.on{background:#e2b569;width:22px;border-radius:4px;}
