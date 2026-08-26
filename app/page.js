@@ -175,6 +175,12 @@ const DEFAULT_MESA = {
     titulo: 'Agende seu horário',
     texto: 'Toque para escolher data, serviço e profissional',
   },
+  destaques: [
+    {ic:'✨', titulo:'Acabamento perfeito'},
+    {ic:'🛡️', titulo:'Proteção da unha'},
+    {ic:'💎', titulo:'Técnica avançada'},
+    {ic:'🌿', titulo:'Produtos de qualidade'},
+  ],
   fotos: [],             // [{url, path}]
   banners: [
     {ic:'🌙', titulo:'Cutícula se cuida, não se corta', texto:'Empurrada com técnica, ela protege a base da unha contra infecções e deixa o acabamento mais bonito.', ativo:true},
@@ -3801,6 +3807,7 @@ function MesaAdmin({toast2,onMesa}){
   const addBanner=()=>setCfg(c=>({...c,banners:[...(c.banners||[]),{ic:'💡',titulo:'',texto:'',ativo:true}]}))
   const removeBanner=i=>setCfg(c=>({...c,banners:(c.banners||[]).filter((_,idx)=>idx!==i)}))
   const setCta=(k,v)=>setCfg(c=>({...c,cta:{...c.cta,[k]:v}}))
+  const setDest=(i,k,v)=>setCfg(c=>{const d=[...(c.destaques||[])];d[i]={...d[i],[k]:v};return{...c,destaques:d}})
 
   async function salvar(){
     setSaving(true)
@@ -3886,6 +3893,20 @@ function MesaAdmin({toast2,onMesa}){
         </div>
       </div>
 
+      {/* SELOS DE QUALIDADE */}
+      <div className="card">
+        <div className="card-hd"><span className="ch">Selos de qualidade</span></div>
+        <div style={{padding:'0 22px 20px'}}>
+          <div style={{...hint,marginTop:0,marginBottom:12}}>Os 4 destaques que aparecem embaixo da curiosidade no totem (ícone + texto curto).</div>
+          {(cfg.destaques||[]).slice(0,4).map((d,i)=>(
+            <div key={i} style={{display:'flex',gap:8,marginBottom:8}}>
+              <input className="inp" style={{width:56,textAlign:'center',padding:'11px 6px'}} value={d.ic||''} onChange={e=>setDest(i,'ic',e.target.value)} placeholder="✨"/>
+              <input className="inp" style={{flex:1}} value={d.titulo||d.txt||''} onChange={e=>setDest(i,'titulo',e.target.value)} placeholder="Ex: Acabamento perfeito"/>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* BOTÃO / RITMO */}
       <div className="card">
         <div className="card-hd"><span className="ch">Botão de agendamento e ritmo</span></div>
@@ -3921,7 +3942,8 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
   const [cli,setCli]=useState(null)
   const [err,setErr]=useState('')
   const [loading,setLoading]=useState(false)
-  const [tick,setTick]=useState(0)
+  const [fIdx,setFIdx]=useState(0)   // foto em destaque
+  const [bIdx,setBIdx]=useState(0)   // card informativo
 
   useEffect(()=>{
     let vivo=true
@@ -3933,19 +3955,29 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
 
   const fotos=(cfg.fotos||[]).filter(f=>f&&f.url)
   const banners=(cfg.banners||[]).filter(b=>b&&b.ativo&&(b.titulo||b.texto))
-  // Duas colunas independentes: fotos (esquerda) e cards (direita).
-  // Um único "tick" avança as duas; cada uma usa o módulo do seu tamanho.
-  const fotoIdx=fotos.length?tick%fotos.length:0
-  const cardIdx=banners.length?tick%banners.length:0
+  const destaques=(cfg.destaques||[]).filter(d=>d&&(d.titulo||d.txt))
+  const nFotos=fotos.length, nBanners=banners.length
+  const fCur=nFotos?fIdx%nFotos:0
+  const bCur=nBanners?bIdx%nBanners:0
 
+  // mantém os índices válidos quando o conteúdo muda
+  useEffect(()=>{ if(fIdx>=nFotos)setFIdx(0) },[nFotos,fIdx])
+  useEffect(()=>{ if(bIdx>=nBanners)setBIdx(0) },[nBanners,bIdx])
+
+  // avanço automático das duas colunas
   useEffect(()=>{
     if(view!=='display')return
-    const maxLen=Math.max(fotos.length,banners.length)
-    if(maxLen<=1)return
+    if(nFotos<=1&&nBanners<=1)return
     const secs=Math.max(3,Number(cfg.intervalo)||7)
-    const t=setInterval(()=>setTick(v=>v+1),secs*1000)
+    const t=setInterval(()=>{
+      if(nFotos>1)setFIdx(v=>(v+1)%nFotos)
+      if(nBanners>1)setBIdx(v=>(v+1)%nBanners)
+    },secs*1000)
     return()=>clearInterval(t)
-  },[view,fotos.length,banners.length,cfg.intervalo])
+  },[view,nFotos,nBanners,cfg.intervalo])
+
+  const fotoPrev=()=>{ if(nFotos)setFIdx(v=>(v-1+nFotos)%nFotos) }
+  const fotoNext=()=>{ if(nFotos)setFIdx(v=>(v+1)%nFotos) }
 
   // Se a cliente parar no meio do agendamento, volta ao totem sozinho
   useEffect(()=>{
@@ -3990,49 +4022,91 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
 
   const TOTEM_CSS=`
     body{background:
-      radial-gradient(120% 90% at 100% 0%,rgba(226,181,105,.20),transparent 55%),
-      radial-gradient(110% 80% at 0% 100%,rgba(189,111,140,.14),transparent 55%),
-      linear-gradient(160deg,#2b2013 0%,#1a130b 55%,#120d07 100%)!important;}
-    .tt-wrap{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:center;
-      padding:26px 18px 22px;position:relative;color:#f4ead6;box-sizing:border-box;}
-    .tt-hd{text-align:center;margin-bottom:12px;}
-    .tt-eyebrow{font-size:10px;font-weight:800;letter-spacing:5px;text-transform:uppercase;color:#c99f52;}
-    .tt-name{font-family:'Parisienne',cursive;font-size:40px;line-height:1.05;color:#f4ead6;margin-top:2px;}
-    /* split lado a lado: fotos 35% (esq) + cards 65% (dir) */
-    .tt-split{display:flex;gap:16px;width:100%;max-width:1100px;flex:1;min-height:0;}
-    .tt-left{flex:0 0 35%;max-width:35%;position:relative;border-radius:26px;overflow:hidden;
-      box-shadow:0 30px 70px rgba(0,0,0,.5);border:1px solid rgba(226,181,105,.28);
-      background:radial-gradient(120% 100% at 50% 0%,rgba(226,181,105,.10),transparent 60%),linear-gradient(160deg,#211810,#141009);}
-    .tt-right{flex:1 1 65%;max-width:65%;position:relative;border-radius:26px;overflow:hidden;
-      box-shadow:0 30px 70px rgba(0,0,0,.5);border:1px solid rgba(226,181,105,.28);
-      background:radial-gradient(120% 100% at 50% 0%,rgba(226,181,105,.12),transparent 60%),linear-gradient(160deg,#241a0f,#171009);}
+      radial-gradient(80% 60% at 6% 38%,rgba(226,181,105,.16),transparent 55%),
+      radial-gradient(90% 70% at 100% 100%,rgba(189,111,140,.10),transparent 55%),
+      linear-gradient(155deg,#1c150d 0%,#120c07 55%,#0b0704 100%)!important;}
+    @keyframes ttfade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+    .tt-wrap{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;gap:14px;
+      padding:20px 26px 22px;position:relative;color:#f4ead6;box-sizing:border-box;}
+    /* top bar: logo + sair */
+    .tt-topbar{display:flex;align-items:flex-start;justify-content:space-between;}
+    .tt-logo{font-family:'Parisienne',cursive;font-size:34px;line-height:1;color:#e9cd94;}
+    .tt-logo-sub{font-size:11px;font-weight:700;letter-spacing:6px;text-transform:uppercase;color:#b89355;margin-top:3px;}
+    /* linha principal */
+    .tt-main{display:flex;gap:26px;flex:1;min-height:0;align-items:stretch;}
+    .tt-photocol{flex:0 0 40%;max-width:40%;display:flex;flex-direction:column;gap:14px;min-height:0;}
+    .tt-featured{position:relative;flex:1;min-height:0;border-radius:22px;overflow:hidden;
+      border:1px solid rgba(226,181,105,.35);box-shadow:0 24px 60px rgba(0,0,0,.55);background:#120d07;}
+    .tt-foto-bg{position:absolute;inset:0;background-size:cover;background-position:center;
+      filter:blur(26px) brightness(.5) saturate(1.1);transform:scale(1.25);}
     .tt-slide{position:absolute;inset:0;opacity:0;transition:opacity 1s ease;pointer-events:none;}
     .tt-slide.on{opacity:1;}
-    /* foto SEMPRE inteira (contain); atrás, uma versão desfocada preenche o quadro */
-    .tt-foto-bg{position:absolute;inset:0;background-size:cover;background-position:center;
-      filter:blur(26px) brightness(.45) saturate(1.1);transform:scale(1.25);}
     .tt-slide img{position:relative;z-index:1;width:100%;height:100%;object-fit:contain;display:block;}
-    .tt-banner{padding:44px 40px;text-align:center;display:flex;flex-direction:column;align-items:center;
-      justify-content:center;height:100%;box-sizing:border-box;}
-    .tt-ic{font-size:56px;margin-bottom:18px;}
-    .tt-tt{font-family:'Noto Serif',serif;font-size:30px;font-weight:700;color:#f6d99a;line-height:1.2;margin-bottom:16px;}
-    .tt-tx{font-size:19px;line-height:1.6;color:#e7dcc6;max-width:520px;}
-    .tt-dots{position:absolute;left:0;right:0;bottom:12px;display:flex;gap:6px;flex-wrap:wrap;justify-content:center;z-index:2;}
-    .tt-dots span{width:7px;height:7px;border-radius:50%;background:rgba(244,234,214,.28);transition:all .3s;}
-    .tt-dots span.on{background:#e2b569;width:22px;border-radius:4px;}
-    .tt-cta{width:100%;max-width:1100px;border:none;border-radius:20px;padding:19px;cursor:pointer;margin-top:16px;
-      background:linear-gradient(135deg,#5c390e,#8a5719 45%,#e2b569);color:#fff;
-      box-shadow:0 14px 34px rgba(138,87,25,.5);display:flex;flex-direction:column;gap:3px;align-items:center;
-      transition:transform .18s;}
-    .tt-cta:active{transform:scale(.98);}
-    .tt-cta .c1{font-family:'Noto Serif',serif;font-size:21px;font-weight:700;letter-spacing:.3px;}
-    .tt-cta .c2{font-size:13px;opacity:.92;}
-    .tt-exit{position:fixed;top:12px;right:12px;z-index:6;display:flex;align-items:center;gap:6px;
-      background:rgba(20,14,8,.55);border:1px solid rgba(244,234,214,.30);color:#f4ead6;
-      border-radius:22px;padding:9px 16px;font-family:'Manrope',sans-serif;font-size:12px;font-weight:700;
-      letter-spacing:.6px;cursor:pointer;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
-      box-shadow:0 6px 18px rgba(0,0,0,.35);transition:background .18s,transform .18s;}
+    .tt-ph{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;
+      text-align:center;padding:30px;color:#e7dcc6;}
+    .tt-ph .i{font-size:52px;margin-bottom:14px;}
+    /* miniaturas */
+    .tt-thumbs{display:flex;align-items:center;gap:10px;}
+    .tt-arrow{flex:0 0 auto;width:44px;height:44px;border-radius:50%;border:1px solid rgba(226,181,105,.4);
+      background:rgba(20,14,8,.6);color:#e2b569;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+    .tt-arrow:active{transform:scale(.94);}
+    .tt-thumbstrip{flex:1;display:flex;gap:10px;overflow-x:auto;padding:2px;scrollbar-width:none;}
+    .tt-thumbstrip::-webkit-scrollbar{display:none;}
+    .tt-thumb{flex:0 0 auto;width:84px;height:84px;border-radius:14px;overflow:hidden;cursor:pointer;
+      border:2px solid transparent;opacity:.55;transition:opacity .2s,border-color .2s;background:#120d07;}
+    .tt-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+    .tt-thumb.on{opacity:1;border-color:#e2b569;}
+    /* coluna de conteúdo */
+    .tt-content{flex:1;min-width:0;display:flex;flex-direction:column;gap:18px;}
+    .tt-brand{text-align:center;}
+    .tt-brand-eyebrow{font-size:12px;font-weight:800;letter-spacing:7px;text-transform:uppercase;color:#c99f52;}
+    .tt-brand-name{font-family:'Noto Serif',serif;font-size:50px;font-weight:700;letter-spacing:2px;
+      text-transform:uppercase;color:#f4ead6;line-height:1;margin:6px 0 4px;}
+    .tt-brand-script{display:flex;align-items:center;justify-content:center;gap:14px;}
+    .tt-brand-script::before,.tt-brand-script::after{content:'';height:1px;width:64px;background:rgba(201,159,82,.7);}
+    .tt-brand-script span{font-family:'Parisienne',cursive;font-size:32px;color:#e9cd94;}
+    /* card de curiosidade em destaque */
+    .tt-infocard{position:relative;border-radius:22px;padding:26px 30px;flex:1;min-height:0;display:flex;align-items:center;gap:24px;
+      border:1px solid rgba(226,181,105,.3);overflow:hidden;
+      background:radial-gradient(120% 140% at 0% 0%,rgba(226,181,105,.12),transparent 55%),linear-gradient(150deg,#231a10,#160f08);
+      box-shadow:0 20px 50px rgba(0,0,0,.45);}
+    .tt-info-ic{flex:0 0 auto;width:100px;height:100px;border-radius:50%;border:1px solid rgba(226,181,105,.4);
+      display:flex;align-items:center;justify-content:center;font-size:46px;
+      background:radial-gradient(circle at 50% 30%,rgba(226,181,105,.16),transparent 70%);}
+    .tt-info-body{flex:1;min-width:0;}
+    .tt-info-eyebrow{font-size:16px;font-weight:800;letter-spacing:3px;text-transform:uppercase;color:#e2b569;margin-bottom:12px;line-height:1.25;}
+    .tt-info-tx{font-family:'Noto Serif',serif;font-size:21px;line-height:1.5;color:#efe4cf;}
+    /* selos de qualidade */
+    .tt-badges{display:flex;gap:12px;}
+    .tt-badge{flex:1;text-align:center;display:flex;flex-direction:column;align-items:center;gap:9px;}
+    .tt-badge-ic{width:56px;height:56px;border-radius:50%;border:1px solid rgba(226,181,105,.35);
+      display:flex;align-items:center;justify-content:center;font-size:23px;
+      background:radial-gradient(circle at 50% 30%,rgba(226,181,105,.12),transparent 70%);}
+    .tt-badge-label{font-size:11.5px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#cbb489;line-height:1.4;}
+    /* CTA dourado */
+    .tt-cta{width:100%;border:none;border-radius:22px;padding:7px;cursor:pointer;
+      background:linear-gradient(135deg,#4a2f0c,#8a5719 30%,#e2b569 75%,#f0d296);
+      box-shadow:0 16px 40px rgba(138,87,25,.5);display:flex;align-items:center;gap:16px;transition:transform .18s;}
+    .tt-cta:active{transform:scale(.99);}
+    .tt-cta-ic{flex:0 0 auto;width:60px;height:60px;border-radius:16px;display:flex;align-items:center;justify-content:center;
+      font-size:26px;margin-left:8px;}
+    .tt-cta-text{flex:1;text-align:left;}
+    .tt-cta-t1{font-family:'Noto Serif',serif;font-size:25px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#1a120a;}
+    .tt-cta-t2{font-size:14px;color:#3a2a15;margin-top:2px;}
+    .tt-cta-arrow{flex:0 0 auto;width:60px;height:60px;border-radius:50%;background:#160f08;color:#e2b569;
+      display:flex;align-items:center;justify-content:center;font-size:24px;margin-right:8px;}
+    /* sair */
+    .tt-exit{position:fixed;top:16px;right:20px;z-index:6;display:flex;align-items:center;gap:8px;
+      background:rgba(20,14,8,.5);border:1px solid rgba(226,181,105,.45);color:#f0e2c6;
+      border-radius:24px;padding:10px 20px;font-family:'Manrope',sans-serif;font-size:14px;font-weight:600;
+      cursor:pointer;transition:background .18s,transform .18s;}
     .tt-exit:active{transform:scale(.96);background:rgba(20,14,8,.8);}
+    @media (max-width:820px){
+      .tt-main{flex-direction:column;}
+      .tt-photocol{flex:none;max-width:100%;height:44%;}
+      .tt-brand-name{font-size:38px;}
+      .tt-info-ic{width:74px;height:74px;font-size:34px;}
+    }
     .tt-idcard{width:100%;max-width:420px;margin:auto;background:rgba(255,253,248,.98);
       border:1px solid rgba(226,181,105,.35);border-radius:26px;padding:34px 30px;
       box-shadow:0 40px 90px rgba(0,0,0,.5);color:#241d13;text-align:center;}
@@ -4078,61 +4152,89 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
     )
   }
 
-  // ── Slideshow (vitrine) ──
+  // ── Vitrine do totem ──
+  const bAtual=nBanners?banners[bCur]:null
+  const nomeCurto=salonName.replace(/nail style$/i,'').trim()||salonName
   return(
     <>
       <style>{G}</style>
       <style>{TOTEM_CSS}</style>
       <div className="tt-wrap">
-        <button className="tt-exit" aria-label="Sair do totem" onClick={()=>{if(window.confirm('Sair do modo totem?'))onExit()}}>✕ Sair</button>
-        <div className="tt-hd">
-          <div className="tt-eyebrow">Bem-vinda ao</div>
-          <div className="tt-name">{salonName}</div>
-        </div>
-        <div className="tt-split">
-          {/* ESQUERDA — fotos inteiras (60%), em carrossel */}
-          <div className="tt-left">
-            {fotos.length>0?fotos.map((f,i)=>(
-              <div key={f.path||i} className={'tt-slide'+(i===fotoIdx?' on':'')}>
-                <div className="tt-foto-bg" style={{backgroundImage:`url(${f.url})`}}/>
-                <img src={f.url} alt=""/>
-              </div>
-            )):(
-              <div className="tt-slide on">
-                <div className="tt-banner">
-                  <div className="tt-ic">💅</div>
-                  <div className="tt-tt">Morgane Faoli Nail Style</div>
-                  <div className="tt-tx">Adicione fotos no painel para exibir aqui.</div>
-                </div>
-              </div>
-            )}
-            {fotos.length>1&&<div className="tt-dots">{fotos.map((_,i)=><span key={i} className={i===fotoIdx?'on':''}/>)}</div>}
-          </div>
-          {/* DIREITA — cards informativos (40%), em carrossel */}
-          <div className="tt-right">
-            {banners.length>0?banners.map((b,i)=>(
-              <div key={i} className={'tt-slide'+(i===cardIdx?' on':'')}>
-                <div className="tt-banner">
-                  <div className="tt-ic">{b.ic}</div>
-                  <div className="tt-tt">{b.titulo}</div>
-                  <div className="tt-tx">{b.texto}</div>
-                </div>
-              </div>
-            )):(
-              <div className="tt-slide on">
-                <div className="tt-banner">
-                  <div className="tt-ic">💛</div>
-                  <div className="tt-tt">Dicas e cuidados</div>
-                  <div className="tt-tx">Crie banners no painel para aparecerem aqui.</div>
-                </div>
-              </div>
-            )}
-            {banners.length>1&&<div className="tt-dots">{banners.map((_,i)=><span key={i} className={i===cardIdx?'on':''}/>)}</div>}
+        <button className="tt-exit" aria-label="Sair do totem" onClick={()=>{if(window.confirm('Sair do modo totem?'))onExit()}}>👤 Sair</button>
+
+        {/* TOPO — logo */}
+        <div className="tt-topbar">
+          <div>
+            <div className="tt-logo">Morgane Faoli</div>
+            <div className="tt-logo-sub">Nail Designer</div>
           </div>
         </div>
+
+        <div className="tt-main">
+          {/* ESQUERDA — foto em destaque + miniaturas (carrossel automático) */}
+          <div className="tt-photocol">
+            <div className="tt-featured">
+              {nFotos>0?fotos.map((f,i)=>(
+                <div key={f.path||i} className={'tt-slide'+(i===fCur?' on':'')}>
+                  <div className="tt-foto-bg" style={{backgroundImage:`url(${f.url})`}}/>
+                  <img src={f.url} alt=""/>
+                </div>
+              )):(
+                <div className="tt-ph"><div className="i">💅</div><div>Adicione fotos no painel para exibir aqui.</div></div>
+              )}
+            </div>
+            {nFotos>1&&(
+              <div className="tt-thumbs">
+                <button className="tt-arrow" onClick={fotoPrev} aria-label="Anterior">‹</button>
+                <div className="tt-thumbstrip">
+                  {fotos.map((f,i)=>(
+                    <div key={f.path||i} className={'tt-thumb'+(i===fCur?' on':'')} onClick={()=>setFIdx(i)}>
+                      <img src={f.url} alt=""/>
+                    </div>
+                  ))}
+                </div>
+                <button className="tt-arrow" onClick={fotoNext} aria-label="Próxima">›</button>
+              </div>
+            )}
+          </div>
+
+          {/* DIREITA — marca + curiosidade em destaque (carrossel automático) + selos */}
+          <div className="tt-content">
+            <div className="tt-brand">
+              <div className="tt-brand-eyebrow">Bem-vinda ao</div>
+              <div className="tt-brand-name">{nomeCurto}</div>
+              <div className="tt-brand-script"><span>Nail Designer</span></div>
+            </div>
+
+            <div className="tt-infocard">
+              <div className="tt-info-ic">{bAtual?bAtual.ic:'💛'}</div>
+              <div className="tt-info-body" key={bCur} style={{animation:'ttfade .6s ease'}}>
+                <div className="tt-info-eyebrow">{bAtual?bAtual.titulo:'Dicas e cuidados'}</div>
+                <div className="tt-info-tx">{bAtual?bAtual.texto:'Crie banners no painel para aparecerem aqui.'}</div>
+              </div>
+            </div>
+
+            {destaques.length>0&&(
+              <div className="tt-badges">
+                {destaques.slice(0,4).map((d,i)=>(
+                  <div key={i} className="tt-badge">
+                    <div className="tt-badge-ic">{d.ic}</div>
+                    <div className="tt-badge-label">{d.titulo||d.txt}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* CTA dourado */}
         <button className="tt-cta" onClick={abrirAgendar}>
-          <span className="c1">{cfg.cta?.titulo||'Agende seu horário'}</span>
-          {(cfg.cta?.texto)&&<span className="c2">{cfg.cta.texto}</span>}
+          <div className="tt-cta-ic">📅</div>
+          <div className="tt-cta-text">
+            <div className="tt-cta-t1">{cfg.cta?.titulo||'Agende seu horário'}</div>
+            {(cfg.cta?.texto)&&<div className="tt-cta-t2">{cfg.cta.texto}</div>}
+          </div>
+          <div className="tt-cta-arrow">›</div>
         </button>
       </div>
     </>
