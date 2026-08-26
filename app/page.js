@@ -4154,21 +4154,16 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
 
   // ── Vitrine do totem ──
   const bAtual=nBanners?banners[bCur]:null
-  const nomeCurto=salonName.replace(/nail style$/i,'').trim()||salonName
+  // separa "Morgane Faoli" (principal) de "Nail Designer/Style" (descritor)
+  const _bm=salonName.match(/^(.*?)\s+(nail\s+\S+)\s*$/i)
+  const brandMain=_bm?_bm[1]:salonName
+  const brandSub=_bm?_bm[2]:''
   return(
     <>
       <style>{G}</style>
       <style>{TOTEM_CSS}</style>
       <div className="tt-wrap">
         <button className="tt-exit" aria-label="Sair do totem" onClick={()=>{if(window.confirm('Sair do modo totem?'))onExit()}}>👤 Sair</button>
-
-        {/* TOPO — logo */}
-        <div className="tt-topbar">
-          <div>
-            <div className="tt-logo">Morgane Faoli</div>
-            <div className="tt-logo-sub">Nail Designer</div>
-          </div>
-        </div>
 
         <div className="tt-main">
           {/* ESQUERDA — foto em destaque + miniaturas (carrossel automático) */}
@@ -4202,8 +4197,8 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
           <div className="tt-content">
             <div className="tt-brand">
               <div className="tt-brand-eyebrow">Bem-vinda ao</div>
-              <div className="tt-brand-name">{nomeCurto}</div>
-              <div className="tt-brand-script"><span>Nail Designer</span></div>
+              <div className="tt-brand-name">{brandMain}</div>
+              {brandSub&&<div className="tt-brand-script"><span>{brandSub}</span></div>}
             </div>
 
             <div className="tt-infocard">
