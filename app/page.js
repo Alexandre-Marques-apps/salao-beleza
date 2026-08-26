@@ -4008,8 +4008,10 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
       background:radial-gradient(120% 100% at 50% 0%,rgba(226,181,105,.12),transparent 60%),linear-gradient(160deg,#241a0f,#171009);}
     .tt-slide{position:absolute;inset:0;opacity:0;transition:opacity 1s ease;pointer-events:none;}
     .tt-slide.on{opacity:1;}
-    /* foto preenche todo o espaço, com cantos arredondados */
-    .tt-slide img{width:100%;height:100%;object-fit:cover;display:block;border-radius:26px;}
+    /* foto SEMPRE inteira (contain); atrás, uma versão desfocada preenche o quadro */
+    .tt-foto-bg{position:absolute;inset:0;background-size:cover;background-position:center;
+      filter:blur(26px) brightness(.45) saturate(1.1);transform:scale(1.25);}
+    .tt-slide img{position:relative;z-index:1;width:100%;height:100%;object-fit:contain;display:block;}
     .tt-banner{padding:44px 40px;text-align:center;display:flex;flex-direction:column;align-items:center;
       justify-content:center;height:100%;box-sizing:border-box;}
     .tt-ic{font-size:56px;margin-bottom:18px;}
@@ -4092,6 +4094,7 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
           <div className="tt-left">
             {fotos.length>0?fotos.map((f,i)=>(
               <div key={f.path||i} className={'tt-slide'+(i===fotoIdx?' on':'')}>
+                <div className="tt-foto-bg" style={{backgroundImage:`url(${f.url})`}}/>
                 <img src={f.url} alt=""/>
               </div>
             )):(
