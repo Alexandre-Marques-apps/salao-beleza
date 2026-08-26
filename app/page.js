@@ -3921,7 +3921,7 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
   const [cli,setCli]=useState(null)
   const [err,setErr]=useState('')
   const [loading,setLoading]=useState(false)
-  const [idx,setIdx]=useState(0)
+  const [tick,setTick]=useState(0)
 
   useEffect(()=>{
     let vivo=true
@@ -3933,25 +3933,19 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
 
   const fotos=(cfg.fotos||[]).filter(f=>f&&f.url)
   const banners=(cfg.banners||[]).filter(b=>b&&b.ativo&&(b.titulo||b.texto))
-  const slides=useMemo(()=>{
-    const arr=[];let fi=0,bi=0
-    while(fi<fotos.length||bi<banners.length){
-      if(fi<fotos.length)arr.push({type:'foto',data:fotos[fi++]})
-      if(fi<fotos.length)arr.push({type:'foto',data:fotos[fi++]})
-      if(bi<banners.length)arr.push({type:'banner',data:banners[bi++]})
-    }
-    return arr.length?arr:[{type:'vazio'}]
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[cfg])
-
-  useEffect(()=>{ setIdx(i=>i%Math.max(1,slides.length)) },[slides.length])
+  // Duas colunas independentes: fotos (esquerda) e cards (direita).
+  // Um único "tick" avança as duas; cada uma usa o módulo do seu tamanho.
+  const fotoIdx=fotos.length?tick%fotos.length:0
+  const cardIdx=banners.length?tick%banners.length:0
 
   useEffect(()=>{
-    if(view!=='display'||slides.length<=1)return
+    if(view!=='display')return
+    const maxLen=Math.max(fotos.length,banners.length)
+    if(maxLen<=1)return
     const secs=Math.max(3,Number(cfg.intervalo)||7)
-    const t=setInterval(()=>setIdx(i=>(i+1)%slides.length),secs*1000)
+    const t=setInterval(()=>setTick(v=>v+1),secs*1000)
     return()=>clearInterval(t)
-  },[view,slides.length,cfg.intervalo])
+  },[view,fotos.length,banners.length,cfg.intervalo])
 
   // Se a cliente parar no meio do agendamento, volta ao totem sozinho
   useEffect(()=>{
@@ -4004,21 +3998,27 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
     .tt-hd{text-align:center;margin-bottom:12px;}
     .tt-eyebrow{font-size:10px;font-weight:800;letter-spacing:5px;text-transform:uppercase;color:#c99f52;}
     .tt-name{font-family:'Parisienne',cursive;font-size:40px;line-height:1.05;color:#f4ead6;margin-top:2px;}
-    .tt-stage{position:relative;width:100%;max-width:560px;flex:1;min-height:0;border-radius:26px;overflow:hidden;
-      box-shadow:0 30px 70px rgba(0,0,0,.5);border:1px solid rgba(226,181,105,.28);background:#1c150d;}
+    /* split lado a lado: fotos 60% (esq) + cards 40% (dir) */
+    .tt-split{display:flex;gap:16px;width:100%;max-width:1100px;flex:1;min-height:0;}
+    .tt-left{flex:0 0 60%;max-width:60%;position:relative;border-radius:26px;overflow:hidden;
+      box-shadow:0 30px 70px rgba(0,0,0,.5);border:1px solid rgba(226,181,105,.28);
+      background:radial-gradient(120% 100% at 50% 0%,rgba(226,181,105,.10),transparent 60%),linear-gradient(160deg,#211810,#141009);}
+    .tt-right{flex:1 1 40%;max-width:40%;position:relative;border-radius:26px;overflow:hidden;
+      box-shadow:0 30px 70px rgba(0,0,0,.5);border:1px solid rgba(226,181,105,.28);
+      background:radial-gradient(120% 100% at 50% 0%,rgba(226,181,105,.12),transparent 60%),linear-gradient(160deg,#241a0f,#171009);}
     .tt-slide{position:absolute;inset:0;opacity:0;transition:opacity 1s ease;pointer-events:none;}
     .tt-slide.on{opacity:1;}
-    .tt-slide img{width:100%;height:100%;object-fit:cover;display:block;}
-    .tt-banner{padding:44px 34px;text-align:center;display:flex;flex-direction:column;align-items:center;
-      justify-content:center;height:100%;box-sizing:border-box;
-      background:radial-gradient(120% 100% at 50% 0%,rgba(226,181,105,.12),transparent 60%),linear-gradient(160deg,#241a0f,#171009);}
-    .tt-ic{font-size:52px;margin-bottom:16px;}
-    .tt-tt{font-family:'Noto Serif',serif;font-size:27px;font-weight:700;color:#f6d99a;line-height:1.2;margin-bottom:13px;}
-    .tt-tx{font-size:17px;line-height:1.6;color:#e7dcc6;max-width:420px;}
-    .tt-dots{display:flex;gap:6px;margin:14px 0 12px;flex-wrap:wrap;justify-content:center;max-width:560px;}
-    .tt-dots span{width:7px;height:7px;border-radius:50%;background:rgba(244,234,214,.26);transition:all .3s;}
+    /* foto inteira, sem cortar */
+    .tt-slide img{width:100%;height:100%;object-fit:contain;display:block;}
+    .tt-banner{padding:38px 28px;text-align:center;display:flex;flex-direction:column;align-items:center;
+      justify-content:center;height:100%;box-sizing:border-box;}
+    .tt-ic{font-size:50px;margin-bottom:16px;}
+    .tt-tt{font-family:'Noto Serif',serif;font-size:25px;font-weight:700;color:#f6d99a;line-height:1.22;margin-bottom:13px;}
+    .tt-tx{font-size:17px;line-height:1.6;color:#e7dcc6;max-width:360px;}
+    .tt-dots{position:absolute;left:0;right:0;bottom:12px;display:flex;gap:6px;flex-wrap:wrap;justify-content:center;z-index:2;}
+    .tt-dots span{width:7px;height:7px;border-radius:50%;background:rgba(244,234,214,.28);transition:all .3s;}
     .tt-dots span.on{background:#e2b569;width:22px;border-radius:4px;}
-    .tt-cta{width:100%;max-width:560px;border:none;border-radius:20px;padding:19px;cursor:pointer;
+    .tt-cta{width:100%;max-width:1100px;border:none;border-radius:20px;padding:19px;cursor:pointer;margin-top:16px;
       background:linear-gradient(135deg,#5c390e,#8a5719 45%,#e2b569);color:#fff;
       box-shadow:0 14px 34px rgba(138,87,25,.5);display:flex;flex-direction:column;gap:3px;align-items:center;
       transition:transform .18s;}
@@ -4087,28 +4087,46 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
           <div className="tt-eyebrow">Bem-vinda ao</div>
           <div className="tt-name">{salonName}</div>
         </div>
-        <div className="tt-stage">
-          {slides.map((s,i)=>(
-            <div key={i} className={'tt-slide'+(i===idx?' on':'')}>
-              {s.type==='foto'&&<img src={s.data.url} alt=""/>}
-              {s.type==='banner'&&(
-                <div className="tt-banner">
-                  <div className="tt-ic">{s.data.ic}</div>
-                  <div className="tt-tt">{s.data.titulo}</div>
-                  <div className="tt-tx">{s.data.texto}</div>
-                </div>
-              )}
-              {s.type==='vazio'&&(
+        <div className="tt-split">
+          {/* ESQUERDA — fotos inteiras (60%), em carrossel */}
+          <div className="tt-left">
+            {fotos.length>0?fotos.map((f,i)=>(
+              <div key={f.path||i} className={'tt-slide'+(i===fotoIdx?' on':'')}>
+                <img src={f.url} alt=""/>
+              </div>
+            )):(
+              <div className="tt-slide on">
                 <div className="tt-banner">
                   <div className="tt-ic">💅</div>
                   <div className="tt-tt">Morgane Faoli Nail Style</div>
-                  <div className="tt-tx">Adicione fotos e banners no painel para exibir aqui.</div>
+                  <div className="tt-tx">Adicione fotos no painel para exibir aqui.</div>
                 </div>
-              )}
-            </div>
-          ))}
+              </div>
+            )}
+            {fotos.length>1&&<div className="tt-dots">{fotos.map((_,i)=><span key={i} className={i===fotoIdx?'on':''}/>)}</div>}
+          </div>
+          {/* DIREITA — cards informativos (40%), em carrossel */}
+          <div className="tt-right">
+            {banners.length>0?banners.map((b,i)=>(
+              <div key={i} className={'tt-slide'+(i===cardIdx?' on':'')}>
+                <div className="tt-banner">
+                  <div className="tt-ic">{b.ic}</div>
+                  <div className="tt-tt">{b.titulo}</div>
+                  <div className="tt-tx">{b.texto}</div>
+                </div>
+              </div>
+            )):(
+              <div className="tt-slide on">
+                <div className="tt-banner">
+                  <div className="tt-ic">💛</div>
+                  <div className="tt-tt">Dicas e cuidados</div>
+                  <div className="tt-tx">Crie banners no painel para aparecerem aqui.</div>
+                </div>
+              </div>
+            )}
+            {banners.length>1&&<div className="tt-dots">{banners.map((_,i)=><span key={i} className={i===cardIdx?'on':''}/>)}</div>}
+          </div>
         </div>
-        <div className="tt-dots">{slides.map((_,i)=><span key={i} className={i===idx?'on':''}/>)}</div>
         <button className="tt-cta" onClick={abrirAgendar}>
           <span className="c1">{cfg.cta?.titulo||'Agende seu horário'}</span>
           {(cfg.cta?.texto)&&<span className="c2">{cfg.cta.texto}</span>}
