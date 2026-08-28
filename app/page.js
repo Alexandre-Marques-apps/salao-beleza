@@ -922,6 +922,46 @@ function Admin({onLogout,onMesa,salonName='Morgane Faoli Nail Style',adminName='
     closeM();toast2('Atendimento finalizado ✓');load()
   }
 
+  // Editar o valor cobrado de um atendimento JÁ FINALIZADO (corrige rendimento)
+  function editValorFinalizado(a){
+    openM('editValor',{id:a.id,cliName:a.cliName,srvName:a.srvName,profName:a.profName,dmy:a.dmy,time:a.time,price:a.price,paid_val:a.paid,paid_old:a.paid})
+  }
+  async function saveValorFinalizado(){
+    setFerr('')
+    if(form.paid_val===''||form.paid_val==null||Number(form.paid_val)<0){setFerr('Informe o valor cobrado');return}
+    const novo=Number(form.paid_val),antigo=Number(form.paid_old)||0
+    const p=profs.find(x=>x.full_name===form.profName)
+    const pct=p?.commission_pct||0
+    const{error}=await supabase.from('salon_bookings').update({
+      price_charged:novo,
+      commission_pct:pct,
+      commission_value:Math.round(novo*(pct/100)*100)/100,
+    }).eq('id',form.id)
+    if(error){setFerr('Erro: '+error.message);return}
+    // ajusta o total gasto do cliente pela diferença (reflete no rendimento por cliente)
+    const cl=clients.find(c=>c.full_name===form.cliName)
+    if(cl){
+      const novoTotal=Math.max(0,(Number(cl.total_spent)||0)+(novo-antigo))
+      await supabase.from('salon_clients').update({total_spent:novoTotal}).eq('id',cl.id)
+    }
+    closeM();toast2('Valor atualizado ✓');load()
+  }
+
+  // Excluir DEFINITIVAMENTE um atendimento finalizado (abate do rendimento)
+  async function delFinalizado(a){
+    if(!window.confirm(`Excluir o atendimento de ${a.cliName} (${a.srvName} · ${a.time})?\n\nO valor de ${fmtCurrency(a.paid)} será abatido do rendimento. Esta ação não pode ser desfeita.`))return
+    const cl=clients.find(c=>c.full_name===a.cliName)
+    if(cl){
+      await supabase.from('salon_clients').update({
+        total_spent:Math.max(0,(Number(cl.total_spent)||0)-(a.paid||0)),
+        visits:Math.max(0,(Number(cl.visits)||0)-1),
+      }).eq('id',cl.id)
+    }
+    const{error}=await supabase.from('salon_bookings').delete().eq('id',a.id)
+    if(error){toast2('Erro ao excluir: '+error.message,false);return}
+    toast2('Atendimento excluído.');load()
+  }
+
   // Registro de ENCAIXE / atendimento avulso — lança um atendimento que já
   // aconteceu, direto como concluído, sem as travas de horário/antecedência/conflito.
   async function saveEncaixe(){
@@ -1315,6 +1355,10 @@ function Admin({onLogout,onMesa,salonName='Morgane Faoli Nail Style',adminName='
                       )}
                       {a.status!=='completed'&&a.status!=='cancelled'&&<button className="btn btn-success btn-sm" onClick={()=>openM('close',{...a,paid_val:a.price})}>✓ Fechar</button>}
                       {a.status!=='completed'&&<button className="btn btn-danger btn-sm" onClick={()=>delAg(a.id)}>✕</button>}
+                      {a.status==='completed'&&(<>
+                        <button className="btn btn-ghost btn-sm" style={{padding:'6px 10px'}} onClick={()=>editValorFinalizado(a)}>✏️ Editar</button>
+                        <button className="btn btn-danger btn-sm" onClick={()=>delFinalizado(a)}>🗑 Excluir</button>
+                      </>)}
                     </div>
                   </div>
                 ))}
@@ -1776,6 +1820,23 @@ function Admin({onLogout,onMesa,salonName='Morgane Faoli Nail Style',adminName='
           {ferr&&<Alert type="danger" c={ferr}/>}
           <div style={{display:'flex',gap:10,marginTop:20}}>
             <button className="btn btn-primary" style={{flex:1,background:'linear-gradient(135deg,#3a7a4a,#2e6040)'}} onClick={closeAg}>✓ Confirmar</button>
+            <button className="btn btn-ghost" onClick={closeM}>Cancelar</button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Editar valor de atendimento finalizado */}
+      {modal==='editValor'&&(
+        <Modal title="Editar valor cobrado" onClose={closeM}>
+          <Alert type="success" c={<><strong>{form.cliName}</strong> — {form.srvName}<br/><span style={{fontSize:11,opacity:.8}}>{form.profName} · {form.dmy} às {form.time}</span></>}/>
+          <Lbl c="Valor de tabela do serviço"/><Inp v={fmtCurrency(form.price)} dis/>
+          <Lbl c="Valor cobrado *"/><Inp v={form.paid_val} set={F('paid_val')} type="number" ph="Valor recebido"/>
+          {form.paid_val!==''&&form.paid_val!=null&&Number(form.paid_val)!==Number(form.paid_old)&&(
+            <Alert type="amber" c={`Ajuste de ${fmtCurrency(Number(form.paid_val)-Number(form.paid_old))} no rendimento (era ${fmtCurrency(form.paid_old)}).`}/>
+          )}
+          {ferr&&<Alert type="danger" c={ferr}/>}
+          <div style={{display:'flex',gap:10,marginTop:20}}>
+            <button className="btn btn-primary" style={{flex:1}} onClick={saveValorFinalizado}>Salvar</button>
             <button className="btn btn-ghost" onClick={closeM}>Cancelar</button>
           </div>
         </Modal>

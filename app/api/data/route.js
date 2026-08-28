@@ -36,7 +36,7 @@ const WRITABLE = {
 }
 
 // Tabelas onde é permitido apagar registros de fato
-const DELETABLE = new Set(['salon_clients', 'salon_blocks'])
+const DELETABLE = new Set(['salon_clients', 'salon_blocks', 'salon_bookings'])
 
 // Chaves de salon_settings que o cliente pode ler/escrever por aqui
 // (admin_senha_hash é tratado só pelas rotas de login/senha)
