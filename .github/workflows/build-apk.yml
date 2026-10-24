@@ -31,6 +31,26 @@ jobs:
           npx cap add android
           npx cap sync android
 
+      - name: Aplicar icone do logo
+        working-directory: mobile
+        run: |
+          pip install pillow
+          python3 - <<'PY'
+          import glob, os, shutil
+          from PIL import Image
+          icon = Image.open("icon.png").convert("RGB")
+          res = "android/app/src/main/res"
+          shutil.rmtree(f"{res}/mipmap-anydpi-v26", ignore_errors=True)
+          sizes = {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192}
+          for d, px in sizes.items():
+              for name in ("ic_launcher", "ic_launcher_round", "ic_launcher_foreground"):
+                  f = f"{res}/mipmap-{d}/{name}.png"
+                  if os.path.exists(f) or name != "ic_launcher_foreground":
+                      icon.resize((px, px), Image.LANCZOS).save(f)
+          for f in glob.glob(f"{res}/drawable*/splash.png"):
+              Image.new("RGB", (480, 480), (238, 234, 224)).save(f)
+          PY
+
       - name: Compilar APK
         working-directory: mobile/android
         run: ./gradlew assembleDebug --no-daemon
