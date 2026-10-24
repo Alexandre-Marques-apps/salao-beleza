@@ -47,8 +47,9 @@ jobs:
                   f = f"{res}/mipmap-{d}/{name}.png"
                   if os.path.exists(f) or name != "ic_launcher_foreground":
                       icon.resize((px, px), Image.LANCZOS).save(f)
+          cover = Image.open("splash.jpg").convert("RGB")
           for f in glob.glob(f"{res}/drawable*/splash.png"):
-              Image.new("RGB", (480, 480), (238, 234, 224)).save(f)
+              cover.save(f)
           PY
 
       - name: Compilar APK
