@@ -1,0 +1,14 @@
+{
+  "appId": "com.metaup.salaobeleza",
+  "appName": "Morgane Faoli Nail Style",
+  "webDir": "www",
+  "backgroundColor": "#000000",
+  "server": {
+    "url": "https://salao-beleza-zeta.vercel.app",
+    "cleartext": false,
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}

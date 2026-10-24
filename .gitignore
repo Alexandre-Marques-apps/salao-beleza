@@ -36,3 +36,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# APK (Capacitor)
+mobile/node_modules
+mobile/android
