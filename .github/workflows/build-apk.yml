@@ -34,7 +34,7 @@ jobs:
       - name: Aplicar icone do logo
         working-directory: mobile
         run: |
-          pip install pillow
+          pip install --break-system-packages pillow
           python3 - <<'PY'
           import glob, os, shutil
           from PIL import Image
