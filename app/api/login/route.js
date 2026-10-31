@@ -1,230 +1,134 @@
-import { createClient } from '@supabase/supabase-js'
 import bcrypt from 'bcryptjs'
+import { getSupabase } from '../../../lib/db.js'
+import { cookieSessao, json, semSenha, senhaFraca } from '../../../lib/session.js'
+import { estaBloqueado, registrarFalha, limparTentativas, ipDe } from '../../../lib/limite.js'
 
 const ADMIN_USER = 'Alexandre'
 const TOTEM_USER = 'totem'
-const MAX_TENT = 5
-const BLOQUEIO_MS = 15 * 60 * 1000
-const tentativas = {}
 
-function getSupabase() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_KEY
-  )
+// hash fictício: quando o usuário não existe, comparamos mesmo assim para o
+// tempo de resposta não revelar quais contas existem
+let HASH_FICTICIO = null
+function hashFicticio() {
+  if (!HASH_FICTICIO) HASH_FICTICIO = bcrypt.hashSync('nao-existe-' + Math.random(), 10)
+  return HASH_FICTICIO
 }
 
-function getIP(req) {
-  return req.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown'
-}
-
-function verificaBloqueio(ip) {
-  const t = tentativas[ip]
-  if (!t) return false
-  if (t.bloqueadoAte && Date.now() < t.bloqueadoAte) return true
-  if (t.bloqueadoAte && Date.now() >= t.bloqueadoAte) delete tentativas[ip]
-  return false
-}
-
-function registraFalha(ip) {
-  if (!tentativas[ip]) tentativas[ip] = { count: 0 }
-  tentativas[ip].count++
-  if (tentativas[ip].count >= MAX_TENT) {
-    tentativas[ip].bloqueadoAte = Date.now() + BLOQUEIO_MS
+// confere a senha; se ainda estiver em texto puro e bater, já converte para hash
+async function confereSenha(supabase, tabela, linha, senha) {
+  if (linha.senha_hash) return bcrypt.compare(senha, linha.senha_hash)
+  if (!linha.senha) { await bcrypt.compare(senha, hashFicticio()); return false }
+  const ok = senha === linha.senha
+  if (ok) {
+    const hash = await bcrypt.hash(senha, 10)
+    await supabase.from(tabela).update({ senha_hash: hash, senha: null }).eq('id', linha.id)
   }
-}
-
-function resetaTentativas(ip) {
-  delete tentativas[ip]
-}
-
-function qtdRestantes(ip) {
-  return MAX_TENT - (tentativas[ip]?.count || 0)
+  return ok
 }
 
 export async function POST(req) {
-  const ip = getIP(req)
-
-  if (verificaBloqueio(ip)) {
-    return Response.json({
-      ok: false,
-      erro: 'Muitas tentativas incorretas. Tente novamente em 15 minutos.'
-    }, { status: 429 })
-  }
-
-  const { usuario, senha } = await req.json()
-  if (!usuario || !senha) {
-    return Response.json({ ok: false, erro: 'Usuário e senha são obrigatórios' }, { status: 400 })
-  }
+  let body
+  try { body = await req.json() } catch { return json({ ok: false, erro: 'Requisição inválida' }, { status: 400 }) }
+  const usuario = String(body?.usuario || '').trim()
+  const senha = String(body?.senha || '')
+  if (!usuario || !senha) return json({ ok: false, erro: 'Usuário e senha são obrigatórios' }, { status: 400 })
 
   const supabase = getSupabase()
+  const ip = ipDe(req)
+  const digitos = usuario.replace(/\D/g, '')
+  const chaveConta = 'conta:' + (digitos.length >= 8 ? digitos : usuario.toLowerCase())
+  const chaves = ['ip:' + ip, chaveConta]
 
-  // ── ADMIN ──────────────────────────────────────────
-  if (usuario.trim() === ADMIN_USER) {
-    // Busca hash da senha do admin no banco
-    const { data: setting } = await supabase
-      .from('salon_settings')
-      .select('value')
-      .eq('key', 'admin_senha_hash')
-      .single()
-
-    let ok = false
-
-    if (setting?.value) {
-      // Verifica com hash bcrypt
-      ok = await bcrypt.compare(senha, setting.value)
-    } else {
-      // Fallback: primeira vez, aceita senha do env e grava hash
-      const senhaEnv = process.env.ADMIN_SENHA || '123456'
-      ok = senha === senhaEnv
-      if (ok) {
-        // Grava hash para próximas vezes
-        const hash = await bcrypt.hash(senhaEnv, 12)
-        await supabase.from('salon_settings').upsert({
-          key: 'admin_senha_hash',
-          value: hash,
-          updated_at: new Date().toISOString()
-        })
-      }
-    }
-
-    if (!ok) {
-      registraFalha(ip)
-      const r = qtdRestantes(ip)
-      return Response.json({
-        ok: false,
-        erro: r > 0
-          ? `Senha incorreta. ${r} tentativa(s) restante(s).`
-          : 'Conta bloqueada por 15 minutos.'
-      }, { status: 401 })
-    }
-    resetaTentativas(ip)
-    return Response.json({ ok: true, perfil: 'admin', nome: ADMIN_USER })
+  if (await estaBloqueado(supabase, chaves)) {
+    return json({ ok: false, erro: 'Muitas tentativas incorretas. Tente novamente em 15 minutos.' }, { status: 429 })
   }
 
-  // ── TOTEM / MESA (login exclusivo do tablet da bancada) ──
-  // Nunca dá acesso a admin/financeiro — só ao modo vitrine + agendamento.
-  if (usuario.trim().toLowerCase() === TOTEM_USER) {
-    const { data: setting } = await supabase
-      .from('salon_settings')
-      .select('value')
-      .eq('key', 'totem_senha_hash')
-      .single()
+  const falha = async () => {
+    await registrarFalha(supabase, chaves)
+    return json({ ok: false, erro: 'Usuário ou senha incorretos' }, { status: 401 })
+  }
+  const sucesso = async (resposta, sessao) => {
+    await limparTentativas(supabase, [chaveConta])
+    return json(resposta, { cookies: [cookieSessao(sessao)] })
+  }
 
+  // ── ADMIN ──────────────────────────────────────────
+  if (usuario.toLowerCase() === ADMIN_USER.toLowerCase()) {
+    const { data: setting } = await supabase.from('salon_settings').select('value').eq('key', 'admin_senha_hash').maybeSingle()
     let ok = false
     if (setting?.value) {
       ok = await bcrypt.compare(senha, setting.value)
     } else {
-      // Primeira vez: aceita a senha padrão do env e grava o hash
-      const senhaEnv = process.env.TOTEM_SENHA || 'totem123'
-      ok = senha === senhaEnv
+      // primeira configuração: aceita a senha do env e grava o hash
+      const senhaEnv = process.env.ADMIN_SENHA
+      ok = !!senhaEnv && senha === senhaEnv
       if (ok) {
-        const hash = await bcrypt.hash(senhaEnv, 12)
-        await supabase.from('salon_settings').upsert({
-          key: 'totem_senha_hash',
-          value: hash,
-          updated_at: new Date().toISOString()
-        })
+        await supabase.from('salon_settings').upsert({ key: 'admin_senha_hash', value: await bcrypt.hash(senhaEnv, 12), updated_at: new Date().toISOString() })
       }
     }
+    if (!ok) return falha()
+    const mc = senhaFraca(senha)
+    return sucesso(
+      { ok: true, perfil: 'admin', nome: ADMIN_USER, trocarSenha: mc },
+      { perfil: 'admin', conta: 'admin', id: 'admin', nome: ADMIN_USER, mc }
+    )
+  }
 
-    if (!ok) {
-      registraFalha(ip)
-      const r = qtdRestantes(ip)
-      return Response.json({
-        ok: false,
-        erro: r > 0
-          ? `Senha incorreta. ${r} tentativa(s) restante(s).`
-          : 'Acesso bloqueado por 15 minutos.'
-      }, { status: 401 })
+  // ── TOTEM (tablet da bancada) ──────────────────────
+  if (usuario.toLowerCase() === TOTEM_USER) {
+    const { data: setting } = await supabase.from('salon_settings').select('value').eq('key', 'totem_senha_hash').maybeSingle()
+    if (!setting?.value) {
+      return json({ ok: false, erro: 'O totem ainda não tem senha. Defina uma no painel do admin, aba Totem / Mesa.' }, { status: 403 })
     }
-    resetaTentativas(ip)
-    return Response.json({ ok: true, perfil: 'mesa' })
+    if (!(await bcrypt.compare(senha, setting.value))) return falha()
+    if (senhaFraca(senha)) {
+      return json({ ok: false, erro: 'A senha do totem é fraca demais. Defina uma nova no painel do admin, aba Totem / Mesa (mínimo 8 caracteres).' }, { status: 403 })
+    }
+    return sucesso({ ok: true, perfil: 'mesa' }, { perfil: 'mesa', conta: 'mesa', id: 'mesa', nome: 'Totem' })
   }
 
   // ── PROFISSIONAL ───────────────────────────────────
-  const { data: prof } = await supabase
+  const { data: profs } = await supabase
     .from('salon_professionals')
     .select('*')
-    .ilike('full_name', usuario.trim())
+    .ilike('full_name', usuario)
     .eq('active', true)
-    .single()
-
+    .limit(1)
+  const prof = profs && profs[0]
   if (prof) {
-    let ok = false
-    if (prof.senha_hash) {
-      ok = await bcrypt.compare(senha, prof.senha_hash)
-    } else {
-      ok = senha === (prof.senha || '123456')
-    }
-    if (!ok) {
-      registraFalha(ip)
-      const r = qtdRestantes(ip)
-      return Response.json({
-        ok: false,
-        erro: r > 0
-          ? `Senha incorreta. ${r} tentativa(s) restante(s).`
-          : 'Conta bloqueada por 15 minutos.'
-      }, { status: 401 })
-    }
-    resetaTentativas(ip)
-    // Profissionais marcados como administradores acessam o painel de admin
-    return Response.json({
-      ok: true,
-      perfil: prof.is_admin ? 'admin' : 'profissional',
-      dados: prof,
-    })
+    if (!(await confereSenha(supabase, 'salon_professionals', prof, senha))) return falha()
+    const perfil = prof.is_admin ? 'admin' : 'profissional'
+    const mc = !!prof.is_admin && senhaFraca(senha)
+    return sucesso(
+      { ok: true, perfil, nome: prof.full_name, dados: semSenha(prof), trocarSenha: mc },
+      { perfil, conta: 'prof', id: prof.id, nome: prof.full_name, mc }
+    )
   }
 
-  // ── CLIENTE (login por telefone OU nome) ───────────
-  const entrada = usuario.trim()
-  const digitos = entrada.replace(/\D/g, '')
+  // ── CLIENTE (telefone OU nome) ─────────────────────
   let cli = null
-
-  // 1) Se parece um telefone, procura por telefone (ignorando formatação)
   if (digitos.length >= 8) {
-    const ult4 = digitos.slice(-4)
     const { data: cands } = await supabase
       .from('salon_clients')
       .select('*')
-      .ilike('phone', `%${ult4}%`)
+      .ilike('phone', `%${digitos.slice(-4)}%`)
     cli = (cands || []).find(c => {
       const p = (c.phone || '').replace(/\D/g, '')
       return p.length >= 8 && (p === digitos || p.endsWith(digitos) || digitos.endsWith(p))
     }) || null
   }
-
-  // 2) Se não achou por telefone, procura por nome
   if (!cli) {
-    const { data: porNome } = await supabase
-      .from('salon_clients')
-      .select('*')
-      .ilike('full_name', entrada)
-      .limit(1)
+    const { data: porNome } = await supabase.from('salon_clients').select('*').ilike('full_name', usuario).limit(1)
     if (porNome && porNome.length) cli = porNome[0]
   }
-
   if (cli) {
-    let ok = false
-    if (cli.senha_hash) {
-      ok = await bcrypt.compare(senha, cli.senha_hash)
-    } else {
-      ok = senha === (cli.senha || '1234')
-    }
-    if (!ok) {
-      registraFalha(ip)
-      const r = qtdRestantes(ip)
-      return Response.json({
-        ok: false,
-        erro: r > 0
-          ? `Senha incorreta. ${r} tentativa(s) restante(s).`
-          : 'Conta bloqueada por 15 minutos.'
-      }, { status: 401 })
-    }
-    resetaTentativas(ip)
-    return Response.json({ ok: true, perfil: 'cliente', dados: cli })
+    if (!(await confereSenha(supabase, 'salon_clients', cli, senha))) return falha()
+    return sucesso(
+      { ok: true, perfil: 'cliente', dados: semSenha(cli) },
+      { perfil: 'cliente', conta: 'cli', id: cli.id, nome: cli.full_name }
+    )
   }
 
-  registraFalha(ip)
-  return Response.json({ ok: false, erro: 'Usuário não encontrado' }, { status: 401 })
+  await bcrypt.compare(senha, hashFicticio())
+  return falha()
 }

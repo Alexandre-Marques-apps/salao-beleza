@@ -1,136 +1,99 @@
-import { createClient } from '@supabase/supabase-js'
 import bcrypt from 'bcryptjs'
+import { getSupabase } from '../../../lib/db.js'
+import { getSessao, cookieSessao, json, senhaFraca } from '../../../lib/session.js'
+import { estaBloqueado, registrarFalha, limparTentativas } from '../../../lib/limite.js'
 
-function getSupabase() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_KEY
-  )
+// ── Troca de senha ──────────────────────────────────────
+// Sempre da PRÓPRIA conta de quem está logado (o crachá diz quem é).
+//  tipo 'obrigatoria' → troca forçada após login com senha fraca (sem senha atual)
+//  tipo 'admin'       → "Minha Senha" no painel admin (Alexandre ou Morgane)
+//  tipo 'profissional'/'cliente' → a própria conta, confirmando a senha atual
+//  tipo 'totem'       → admin define a senha do totem, confirmando a própria senha
+// Toda senha nova é gravada só como hash (bcrypt).
+
+async function hashDoAdmin(supabase) {
+  const { data } = await supabase.from('salon_settings').select('value').eq('key', 'admin_senha_hash').maybeSingle()
+  return data?.value || null
+}
+
+// confere a senha atual da conta logada
+async function confereAtual(supabase, s, senhaAtual) {
+  if (s.k === 'admin') {
+    const h = await hashDoAdmin(supabase)
+    return !!h && bcrypt.compare(senhaAtual, h)
+  }
+  const tabela = s.k === 'prof' ? 'salon_professionals' : s.k === 'cli' ? 'salon_clients' : null
+  if (!tabela) return false
+  const { data } = await supabase.from(tabela).select('senha,senha_hash').eq('id', s.id).maybeSingle()
+  if (!data) return false
+  if (data.senha_hash) return bcrypt.compare(senhaAtual, data.senha_hash)
+  return !!data.senha && senhaAtual === data.senha
+}
+
+async function gravarPropria(supabase, s, senhaNova) {
+  const hash = await bcrypt.hash(senhaNova, 12)
+  if (s.k === 'admin') {
+    return supabase.from('salon_settings').upsert({ key: 'admin_senha_hash', value: hash, updated_at: new Date().toISOString() })
+  }
+  const tabela = s.k === 'prof' ? 'salon_professionals' : 'salon_clients'
+  return supabase.from(tabela).update({ senha_hash: hash, senha: null }).eq('id', s.id)
 }
 
 export async function POST(req) {
-  const { tipo, id, senhaAtual, senhaNova } = await req.json()
+  const s = getSessao(req)
+  if (!s) return json({ ok: false, erro: 'Faça login novamente' }, { status: 401 })
 
-  if (!tipo || !senhaAtual || !senhaNova) {
-    return Response.json({ ok: false, erro: 'Dados incompletos' }, { status: 400 })
-  }
-
-  if (senhaNova.length < 6) {
-    return Response.json({ ok: false, erro: 'Nova senha deve ter pelo menos 6 caracteres' }, { status: 400 })
-  }
-
+  let body
+  try { body = await req.json() } catch { return json({ ok: false, erro: 'Dados inválidos' }, { status: 400 }) }
+  const { tipo } = body || {}
+  const senhaAtual = String(body?.senhaAtual || '')
+  const senhaNova = String(body?.senhaNova || '')
   const supabase = getSupabase()
+  const chave = `senha:${s.k}:${s.id}`
 
-  // ── ADMIN ──────────────────────────────────────────
-  if (tipo === 'admin') {
-    const { data: setting } = await supabase
-      .from('salon_settings')
-      .select('value')
-      .eq('key', 'admin_senha_hash')
-      .single()
-
-    let ok = false
-    if (setting?.value) {
-      ok = await bcrypt.compare(senhaAtual, setting.value)
-    } else {
-      // Fallback primeira vez
-      const senhaEnv = process.env.ADMIN_SENHA || '123456'
-      ok = senhaAtual === senhaEnv
-    }
-
-    if (!ok) return Response.json({ ok: false, erro: 'Senha atual incorreta' }, { status: 401 })
-
-    const novoHash = await bcrypt.hash(senhaNova, 12)
-    await supabase.from('salon_settings').upsert({
-      key: 'admin_senha_hash',
-      value: novoHash,
-      updated_at: new Date().toISOString()
-    })
-
-    return Response.json({ ok: true })
+  // ── Troca obrigatória (login com senha fraca) ──
+  if (tipo === 'obrigatoria') {
+    if (!s.mc) return json({ ok: false, erro: 'Nada a trocar' }, { status: 400 })
+    if (senhaFraca(senhaNova)) return json({ ok: false, erro: 'Use pelo menos 8 caracteres e evite senhas óbvias (ex.: 123456).' }, { status: 400 })
+    const { error } = await gravarPropria(supabase, s, senhaNova)
+    if (error) return json({ ok: false, erro: 'Não consegui salvar. Tente novamente.' }, { status: 500 })
+    return json({ ok: true }, { cookies: [cookieSessao({ perfil: s.p, conta: s.k, id: s.id, nome: s.n, mc: false })] })
   }
 
-  // ── TOTEM ──────────────────────────────────────────
-  // Só o admin define a senha do totem: autoriza com a própria senha de admin.
+  if (s.mc) return json({ ok: false, erro: 'Defina sua nova senha primeiro' }, { status: 403 })
+  if (!senhaAtual || !senhaNova) return json({ ok: false, erro: 'Dados incompletos' }, { status: 400 })
+  if (await estaBloqueado(supabase, [chave])) {
+    return json({ ok: false, erro: 'Muitas tentativas incorretas. Tente novamente em 15 minutos.' }, { status: 429 })
+  }
+
+  // quem pode usar cada tipo
+  const permitido =
+    (tipo === 'admin' && s.p === 'admin') ||
+    (tipo === 'totem' && s.p === 'admin') ||
+    (tipo === 'profissional' && s.k === 'prof') ||
+    (tipo === 'cliente' && s.k === 'cli')
+  if (!permitido) return json({ ok: false, erro: 'Operação não permitida' }, { status: 403 })
+
+  // força mínima: admin e totem exigem senha forte; demais, 6+ caracteres
+  if (tipo === 'admin' || tipo === 'totem' || s.p === 'admin') {
+    if (senhaFraca(senhaNova)) return json({ ok: false, erro: 'Use pelo menos 8 caracteres e evite senhas óbvias (ex.: 123456).' }, { status: 400 })
+  } else if (senhaNova.length < 6) {
+    return json({ ok: false, erro: 'A nova senha deve ter pelo menos 6 caracteres' }, { status: 400 })
+  }
+
+  if (!(await confereAtual(supabase, s, senhaAtual))) {
+    await registrarFalha(supabase, [chave])
+    return json({ ok: false, erro: tipo === 'totem' ? 'Sua senha de administrador está incorreta' : 'Senha atual incorreta' }, { status: 401 })
+  }
+  await limparTentativas(supabase, [chave])
+
   if (tipo === 'totem') {
-    const { data: setting } = await supabase
-      .from('salon_settings')
-      .select('value')
-      .eq('key', 'admin_senha_hash')
-      .single()
-
-    let ok = false
-    if (setting?.value) {
-      ok = await bcrypt.compare(senhaAtual, setting.value)
-    } else {
-      const senhaEnv = process.env.ADMIN_SENHA || '123456'
-      ok = senhaAtual === senhaEnv
-    }
-    if (!ok) return Response.json({ ok: false, erro: 'Senha do administrador incorreta' }, { status: 401 })
-
-    const novoHash = await bcrypt.hash(senhaNova, 12)
-    await supabase.from('salon_settings').upsert({
-      key: 'totem_senha_hash',
-      value: novoHash,
-      updated_at: new Date().toISOString()
-    })
-
-    return Response.json({ ok: true })
+    const { error } = await supabase.from('salon_settings').upsert({ key: 'totem_senha_hash', value: await bcrypt.hash(senhaNova, 12), updated_at: new Date().toISOString() })
+    if (error) return json({ ok: false, erro: 'Não consegui salvar. Tente novamente.' }, { status: 500 })
+    return json({ ok: true })
   }
 
-  // ── PROFISSIONAL ───────────────────────────────────
-  if (tipo === 'profissional') {
-    const { data: prof } = await supabase
-      .from('salon_professionals')
-      .select('senha, senha_hash')
-      .eq('id', id)
-      .single()
-
-    if (!prof) return Response.json({ ok: false, erro: 'Profissional não encontrado' }, { status: 404 })
-
-    let ok = false
-    if (prof.senha_hash) {
-      ok = await bcrypt.compare(senhaAtual, prof.senha_hash)
-    } else {
-      ok = senhaAtual === (prof.senha || '123456')
-    }
-    if (!ok) return Response.json({ ok: false, erro: 'Senha atual incorreta' }, { status: 401 })
-
-    const novoHash = await bcrypt.hash(senhaNova, 12)
-    await supabase
-      .from('salon_professionals')
-      .update({ senha_hash: novoHash, senha: null })
-      .eq('id', id)
-
-    return Response.json({ ok: true })
-  }
-
-  // ── CLIENTE ────────────────────────────────────────
-  if (tipo === 'cliente') {
-    const { data: cli } = await supabase
-      .from('salon_clients')
-      .select('senha, senha_hash')
-      .eq('id', id)
-      .single()
-
-    if (!cli) return Response.json({ ok: false, erro: 'Cliente não encontrado' }, { status: 404 })
-
-    let ok = false
-    if (cli.senha_hash) {
-      ok = await bcrypt.compare(senhaAtual, cli.senha_hash)
-    } else {
-      ok = senhaAtual === (cli.senha || '1234')
-    }
-    if (!ok) return Response.json({ ok: false, erro: 'Senha atual incorreta' }, { status: 401 })
-
-    const novoHash = await bcrypt.hash(senhaNova, 12)
-    await supabase
-      .from('salon_clients')
-      .update({ senha_hash: novoHash, senha: null })
-      .eq('id', id)
-
-    return Response.json({ ok: true })
-  }
-
-  return Response.json({ ok: false, erro: 'Tipo inválido' }, { status: 400 })
+  const { error } = await gravarPropria(supabase, s, senhaNova)
+  if (error) return json({ ok: false, erro: 'Não consegui salvar. Tente novamente.' }, { status: 500 })
+  return json({ ok: true })
 }
