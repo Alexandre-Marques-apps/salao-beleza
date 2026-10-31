@@ -4562,21 +4562,14 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
   }
 
   const TOTEM_CSS=`${VIDRO_CSS}
-    body{background:
-      radial-gradient(80% 60% at 6% 38%,rgba(226,181,105,.16),transparent 55%),
-      radial-gradient(90% 70% at 100% 100%,rgba(189,111,140,.10),transparent 55%),
-      linear-gradient(155deg,#1c150d 0%,#120c07 55%,#0b0704 100%)!important;}
-    body::before{opacity:.35;}
+    body{background:#FBF8F3!important;}
     .tt-wrap{
-      --ouro:#e2b569;--ouro-claro:#f3d9a0;--ouro-txt:#c99f52;--script:#e9cd94;
-      --creme:#f4ead6;--creme-2:#dccdb0;--creme-3:#9c8b6e;
-      --linha:rgba(226,181,105,.2);--linha-forte:rgba(226,181,105,.42);
+      --ouro:#b8862f;--ouro-claro:#d9b46e;--ouro-txt:#9A7D56;--dourado:linear-gradient(135deg,#d9b46e 0%,#b8862f 52%,#9A7D56 100%);
+      --ink:#2a2017;--ink2:#7d6c55;--ink3:#b0a089;--marrom:#3b2914;
+      --linha:rgba(154,125,86,.16);--linha-forte:rgba(154,125,86,.3);
       --saida:cubic-bezier(.22,1,.36,1);
-      position:relative;isolation:isolate;height:100vh;height:100dvh;overflow:hidden;color:var(--creme);
+      position:relative;isolation:isolate;height:100vh;height:100dvh;overflow:hidden;color:var(--ink);
       padding:max(18px,env(safe-area-inset-top)) clamp(18px,2.4vw,34px) max(18px,env(safe-area-inset-bottom));}
-    /* grão bem leve e parado, dá textura de papel ao fundo */
-    .tt-wrap::before{content:'';position:absolute;inset:0;z-index:-1;pointer-events:none;opacity:.07;
-      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");}
     .tt-in{animation:tt-sobe .9s var(--saida) backwards;animation-delay:var(--d,0s);}
     @keyframes tt-sobe{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
     @keyframes tt-prog{from{transform:scaleX(0)}to{transform:scaleX(1)}}
@@ -4595,68 +4588,69 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
     .tt-brand-eyebrow{font:700 clamp(10px,.95vw,12px)/1 'Manrope',sans-serif;letter-spacing:.55em;margin-right:-.55em;
       text-transform:uppercase;color:var(--ouro-txt);}
     .tt-brand-name{font-family:'Noto Serif',serif;font-weight:600;font-size:clamp(30px,min(3.9vw,7.2vh),58px);line-height:1;
-      letter-spacing:.07em;margin:.34em -.07em 0 0;text-transform:uppercase;color:var(--creme);}
+      letter-spacing:.07em;margin:.34em -.07em 0 0;text-transform:uppercase;color:var(--marrom);}
     .tt-brand-script{display:flex;align-items:center;justify-content:center;gap:16px;margin-top:2px;}
     .tt-brand-script::before,.tt-brand-script::after{content:'';height:1px;width:clamp(40px,5vw,84px);
-      background:linear-gradient(90deg,transparent,rgba(226,181,105,.85));}
+      background:linear-gradient(90deg,transparent,rgba(184,134,47,.75));}
     .tt-brand-script::after{transform:scaleX(-1);}
-    .tt-brand-script span{font-family:'Parisienne',cursive;font-size:clamp(26px,min(2.5vw,4.8vh),36px);line-height:1.25;color:var(--script);}
+    .tt-brand-script span{font-family:'Parisienne',cursive;font-size:clamp(26px,min(2.5vw,4.8vh),36px);line-height:1.25;padding:0 .18em;color:#a9781f;
+      background:linear-gradient(135deg,#d9b46e 0%,#b8862f 48%,#8e6420 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
 
     /* foto em destaque — inteira, sem corte; o fundo é a própria foto desfocada */
-    .tt-stage{position:relative;min-height:0;border-radius:clamp(20px,2.3vw,30px);overflow:hidden;background:#140e08;
-      box-shadow:0 34px 70px -24px rgba(0,0,0,.75),0 0 0 1px var(--linha-forte);touch-action:pan-y;cursor:pointer;isolation:isolate;}
+    .tt-stage{position:relative;min-height:0;border-radius:clamp(20px,2.3vw,30px);overflow:hidden;background:#f1e7d8;
+      box-shadow:0 0 0 3px #fff,0 28px 60px -24px rgba(120,80,30,.45),0 4px 14px rgba(160,110,60,.12);touch-action:pan-y;cursor:pointer;isolation:isolate;}
     .tt-stage::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:3;
-      box-shadow:inset 0 1px 0 rgba(255,236,200,.16),inset 0 0 0 1px rgba(255,236,200,.05);}
+      box-shadow:inset 0 0 0 1px rgba(154,125,86,.12);}
     .tt-slide{position:absolute;inset:0;}
     .tt-slide.in{z-index:2;animation:tt-foto-in 1s var(--saida) both;}
     .tt-slide.out{z-index:1;}
     .tt-slide-bg{position:absolute;inset:-8%;background-size:cover;background-position:center;
-      filter:blur(20px) brightness(.62) saturate(1.2) sepia(.18);}
-    .tt-slide-veu{position:absolute;inset:0;background:radial-gradient(75% 85% at 50% 50%,rgba(20,13,7,.12),rgba(14,9,5,.72));}
+      filter:blur(20px) brightness(1.05) saturate(1.15);}
+    .tt-slide-veu{position:absolute;inset:0;background:radial-gradient(75% 85% at 50% 50%,rgba(251,248,243,.08),rgba(251,248,243,.6));}
     .tt-slide-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;-webkit-user-drag:none;user-select:none;}
     .tt-slide.in .tt-slide-img{animation:tt-foto-zoom 1.3s var(--saida) both;}
     @keyframes tt-foto-in{from{opacity:0}to{opacity:1}}
     @keyframes tt-foto-zoom{from{transform:scale(.965)}to{transform:none}}
     .tt-ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
-      text-align:center;padding:30px;color:var(--creme-2);font-size:15px;line-height:1.5;}
+      text-align:center;padding:30px;color:var(--ink2);font-size:15px;line-height:1.5;}
     .tt-ph .i{font-size:48px;}
     .tt-nav{position:absolute;top:50%;z-index:4;width:58px;height:58px;margin-top:-29px;border:0;border-radius:50%;
       display:grid;place-items:center;cursor:pointer;}
     .tt-nav.esq{left:14px;} .tt-nav.dir{right:14px;}
     .tt-count{position:absolute;left:50%;bottom:14px;z-index:4;transform:translateX(-50%);padding:9px 16px;border-radius:999px;
-      font:600 13px/1 'Manrope',sans-serif;letter-spacing:.14em;font-variant-numeric:tabular-nums;color:rgba(251,241,222,.82);}
-    .tt-count b{color:#fff8ea;font-weight:700;}
+      font:600 13px/1 'Manrope',sans-serif;letter-spacing:.14em;font-variant-numeric:tabular-nums;color:var(--ink2);}
+    .tt-count b{color:var(--ink);font-weight:800;}
+    .tt-nav{color:var(--marrom);}
 
     /* miniaturas */
     .tt-thumbs{display:flex;align-items:center;gap:10px;min-width:0;}
-    .tt-thumbstrip{position:relative;flex:1;min-width:0;display:flex;gap:10px;overflow-x:auto;padding:4px 16px;scrollbar-width:none;margin:0 -16px;
+    .tt-thumbstrip{position:relative;flex:1;min-width:0;display:flex;gap:10px;overflow-x:auto;padding:6px 16px 12px;scrollbar-width:none;margin:-6px -16px -12px;
       -webkit-mask-image:linear-gradient(90deg,transparent,#000 16px,#000 calc(100% - 16px),transparent);
       mask-image:linear-gradient(90deg,transparent,#000 16px,#000 calc(100% - 16px),transparent);}
     .tt-thumbstrip::-webkit-scrollbar{display:none;}
     .tt-thumb{position:relative;flex:0 0 auto;width:clamp(56px,5.8vw,76px);aspect-ratio:1;border-radius:16px;overflow:hidden;
-      border:0;padding:0;cursor:pointer;background:#1a120a;opacity:.48;transition:opacity .35s ease;}
+      border:0;padding:0;cursor:pointer;background:#efe5d6;opacity:.62;transition:opacity .35s ease;box-shadow:0 6px 14px -6px rgba(140,95,40,.45);}
     .tt-thumb img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;}
-    .tt-thumb::after{content:'';position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 0 0 1px rgba(255,236,200,.14);}
+    .tt-thumb::after{content:'';position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 0 0 2px rgba(255,255,255,.95);}
     .tt-thumb.on{opacity:1;}
-    .tt-thumb.on::after{box-shadow:inset 0 0 0 2px var(--ouro);}
-    .tt-thumb-prog{position:absolute;left:9px;right:9px;bottom:8px;height:3px;border-radius:2px;background:rgba(10,6,3,.5);overflow:hidden;z-index:1;}
-    .tt-thumb-prog i{display:block;height:100%;background:var(--ouro-claro);transform-origin:left center;animation:tt-prog linear both;}
+    .tt-thumb.on::after{box-shadow:inset 0 0 0 3px var(--ouro-claro);}
+    .tt-thumb-prog{position:absolute;left:9px;right:9px;bottom:8px;height:3px;border-radius:2px;background:rgba(255,255,255,.7);overflow:hidden;z-index:1;}
+    .tt-thumb-prog i{display:block;height:100%;background:var(--ouro);transform-origin:left center;animation:tt-prog linear both;}
 
     /* curiosidades — o destaque de texto da tela */
     .tt-info{position:relative;min-height:0;display:flex;flex-direction:column;cursor:pointer;overflow:hidden;
       border-radius:clamp(20px,2.3vw,30px);padding:clamp(16px,2.6vh,30px) clamp(20px,2.4vw,38px) clamp(16px,2.4vh,26px);
-      background:radial-gradient(110% 90% at 0% 0%,rgba(226,181,105,.14),transparent 55%),linear-gradient(160deg,#271c11,#150e08 72%);
-      box-shadow:0 34px 70px -26px rgba(0,0,0,.7),0 0 0 1px var(--linha);}
-    .tt-info::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;box-shadow:inset 0 1px 0 rgba(255,236,200,.08);}
+      background:radial-gradient(120% 80% at 100% 0%,rgba(226,181,105,.30),transparent 55%),linear-gradient(150deg,#f8ece1 0%,#f3d9c8 55%,#eec7b3 100%);
+      box-shadow:0 18px 44px rgba(160,110,60,.18),0 0 0 1px rgba(201,153,47,.3);}
+    .tt-info::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.6);}
     .tt-info-top{display:flex;align-items:center;gap:14px;}
     .tt-info-ic{flex:0 0 auto;width:clamp(46px,6vh,60px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;
-      font-size:clamp(21px,2.8vh,28px);box-shadow:inset 0 0 0 1px var(--linha-forte);
-      background:radial-gradient(circle at 50% 30%,rgba(226,181,105,.24),rgba(226,181,105,.04) 70%);
+      font-size:clamp(21px,2.8vh,28px);background:#fffdf9;box-shadow:0 4px 12px rgba(160,110,60,.2),inset 0 0 0 1px rgba(255,255,255,.9);
       animation:tt-pop .7s var(--saida) backwards;}
     @keyframes tt-pop{from{opacity:0;transform:scale(.8)}to{opacity:1;transform:none}}
     .tt-info-label{flex:1;min-width:0;font:700 clamp(10px,.95vw,12px)/1.3 'Manrope',sans-serif;letter-spacing:.3em;text-transform:uppercase;color:var(--ouro-txt);}
-    .tt-info-count{font:600 14px/1 'Manrope',sans-serif;letter-spacing:.1em;color:var(--creme);font-variant-numeric:tabular-nums;}
-    .tt-info-count span{color:var(--creme-3);}
+    .tt-info-count{font:600 14px/1 'Manrope',sans-serif;letter-spacing:.1em;color:var(--ink);font-variant-numeric:tabular-nums;}
+    .tt-info-count span{color:var(--ink3);}
     .tt-info-stack{flex:1;min-height:0;display:grid;align-items:center;overflow:hidden;margin:clamp(6px,1.4vh,16px) 0;}
     .tt-info-item{grid-area:1/1;min-width:0;}
     .tt-info-item.in{animation:tt-texto-in .85s .2s var(--saida) both;}
@@ -4664,23 +4658,23 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
     @keyframes tt-texto-in{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
     @keyframes tt-texto-out{from{opacity:1}to{opacity:0;transform:translateY(-8px)}}
     .tt-info-tt{font-family:'Noto Serif',serif;font-weight:600;font-size:clamp(22px,min(3.2vw,5.6vh),50px);line-height:1.14;
-      letter-spacing:-.01em;color:var(--creme);text-wrap:balance;}
-    .tt-info-tx{margin-top:clamp(8px,1.6vh,16px);font:400 clamp(15px,min(1.8vw,3.2vh),25px)/1.55 'Manrope',sans-serif;color:var(--creme-2);
+      letter-spacing:-.01em;color:var(--marrom);text-wrap:balance;}
+    .tt-info-tx{margin-top:clamp(8px,1.6vh,16px);font:400 clamp(15px,min(1.8vw,3.2vh),25px)/1.55 'Manrope',sans-serif;color:#6a5641;
       max-width:52ch;text-wrap:pretty;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;}
     .tt-info-prog{display:flex;gap:6px;}
-    .tt-info-prog span{flex:1;height:3px;border-radius:2px;background:rgba(244,234,214,.13);overflow:hidden;}
-    .tt-info-prog span.feito{background:rgba(226,181,105,.5);}
-    .tt-info-prog i{display:block;height:100%;background:var(--ouro);transform-origin:left center;animation:tt-prog linear both;}
+    .tt-info-prog span{flex:1;height:3px;border-radius:2px;background:rgba(154,125,86,.18);overflow:hidden;}
+    .tt-info-prog span.feito{background:rgba(184,134,47,.5);}
+    .tt-info-prog i{display:block;height:100%;background:linear-gradient(90deg,#d9b46e,#b8862f);transform-origin:left center;animation:tt-prog linear both;}
 
     /* selos de qualidade */
     .tt-badges{display:flex;align-items:stretch;min-width:0;border-radius:22px;padding:8px 4px;container-type:inline-size;
-      background:rgba(255,236,200,.035);box-shadow:inset 0 0 0 1px var(--linha);}
+      background:#fffdf9;box-shadow:0 0 0 1px var(--linha),0 1px 2px rgba(70,45,15,.04),0 6px 20px rgba(70,45,15,.05);}
     .tt-badge{position:relative;flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:6px clamp(8px,1vw,14px);}
     .tt-badge+.tt-badge::before{content:'';position:absolute;left:0;top:16%;bottom:16%;width:1px;
-      background:linear-gradient(transparent,rgba(226,181,105,.36),transparent);}
+      background:linear-gradient(transparent,rgba(154,125,86,.24),transparent);}
     .tt-badge-ic{flex:0 0 auto;width:clamp(36px,4.6vh,44px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;font-size:clamp(16px,2.1vh,19px);
-      box-shadow:inset 0 0 0 1px var(--linha-forte);background:radial-gradient(circle at 50% 30%,rgba(226,181,105,.16),transparent 72%);}
-    .tt-badge-label{min-width:0;font:600 clamp(12px,1.08vw,14px)/1.3 'Manrope',sans-serif;color:var(--creme-2);}
+      background:linear-gradient(160deg,#fbf3e6,#f5e6d2);box-shadow:0 3px 10px rgba(160,110,60,.16),inset 0 1px 0 #fff;}
+    .tt-badge-label{min-width:0;font:600 clamp(12px,1.08vw,14px)/1.3 'Manrope',sans-serif;color:var(--ink2);}
     @container (max-width:660px){
       .tt-badge{flex-direction:column;justify-content:center;gap:7px;padding:4px 6px;text-align:center;}
       .tt-badge-ic{width:36px;font-size:16px;}
@@ -4690,31 +4684,32 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
     /* botão dourado */
     .tt-cta{position:relative;overflow:hidden;isolation:isolate;display:flex;align-items:center;gap:clamp(12px,1.6vw,20px);width:100%;
       min-height:clamp(70px,10.5vh,92px);padding:10px 11px 10px clamp(12px,1.4vw,18px);border:0;border-radius:999px;cursor:pointer;text-align:left;
-      background:linear-gradient(100deg,#a8742c 0%,#c38f42 22%,#e2b569 50%,#f3d9a0 74%,#dcb06a 100%);
-      box-shadow:0 20px 46px -14px rgba(196,140,60,.62),inset 0 1px 0 rgba(255,246,222,.6),inset 0 -1px 0 rgba(90,55,15,.35);
-      color:#1c130a;transition:transform .2s var(--saida);}
+      background:linear-gradient(100deg,#8e6420 0%,#a8782a 30%,#b8862f 55%,#d9b46e 100%);
+      box-shadow:0 18px 40px -12px rgba(154,125,86,.55),inset 0 1px 0 rgba(255,255,255,.35),inset 0 -1px 0 rgba(90,55,15,.25);
+      color:#fff;transition:transform .2s var(--saida);}
     .tt-cta::after{content:'';position:absolute;top:0;bottom:0;left:0;width:26%;z-index:-1;pointer-events:none;
-      background:linear-gradient(100deg,transparent,rgba(255,251,238,.5),transparent);
+      background:linear-gradient(100deg,transparent,rgba(255,255,255,.42),transparent);
       transform:translateX(-130%) skewX(-18deg);animation:tt-brilho 8s 2.5s ease-in-out infinite;}
     @keyframes tt-brilho{0%{transform:translateX(-130%) skewX(-18deg)}20%,100%{transform:translateX(480%) skewX(-18deg)}}
     .tt-cta:active{transform:scale(.985);}
-    .tt-cta-ic{position:relative;flex:0 0 auto;width:clamp(48px,7vh,64px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;color:#2a1c0d;}
-    .tt-cta-ic.vidro-claro{background:linear-gradient(180deg,rgba(255,255,255,.55),rgba(255,248,232,.18));}
+    .tt-cta-ic{position:relative;flex:0 0 auto;width:clamp(48px,7vh,64px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;color:#fff;}
+    .tt-cta-ic.vidro-claro{background:linear-gradient(180deg,rgba(255,255,255,.42),rgba(255,255,255,.12));
+      box-shadow:inset 0 1px 1px rgba(255,255,255,.7),inset 0 -1px 1px rgba(255,255,255,.2),0 6px 16px -8px rgba(90,55,15,.4);}
     .tt-cta-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;}
     .tt-cta-t1{font-family:'Noto Serif',serif;font-weight:700;font-size:clamp(19px,2.1vw,28px);line-height:1.1;letter-spacing:.08em;
-      text-transform:uppercase;color:#1c130a;}
-    .tt-cta-t2{font:500 clamp(13px,1.15vw,15px)/1.35 'Manrope',sans-serif;color:rgba(36,24,10,.8);}
-    .tt-cta-go{position:relative;flex:0 0 auto;width:clamp(52px,7.6vh,70px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;color:var(--ouro-claro);}
-    .tt-cta-go.vidro-escuro{background:linear-gradient(180deg,rgba(255,255,255,.14),rgba(255,255,255,0)),rgba(24,15,7,.66);
-      box-shadow:inset 0 1px 1px rgba(255,236,200,.4),inset 0 -1px 1px rgba(255,255,255,.08),0 10px 22px -8px rgba(26,18,10,.6);}
+      text-transform:uppercase;color:#fff;text-shadow:0 1px 1px rgba(90,55,15,.25);}
+    .tt-cta-t2{font:500 clamp(13px,1.15vw,15px)/1.35 'Manrope',sans-serif;color:rgba(255,255,255,.9);}
+    .tt-cta-go{position:relative;flex:0 0 auto;width:clamp(52px,7.6vh,70px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;color:#8e6420;}
+    .tt-cta-go.vidro-claro{background:linear-gradient(180deg,rgba(255,255,255,.96),rgba(255,250,240,.78));
+      box-shadow:inset 0 1px 1px #fff,inset 0 -1px 1px rgba(255,255,255,.5),0 10px 22px -8px rgba(90,55,15,.5);}
     .tt-cta-go svg{animation:tt-cutuca 4s 3s var(--saida) infinite;}
     @keyframes tt-cutuca{0%,80%,100%{transform:none}87%{transform:translateX(5px)}94%{transform:translateX(-1px)}}
 
     /* sair / voltar */
     .tt-exit,.tt-back{position:fixed;top:max(14px,env(safe-area-inset-top));z-index:10;display:flex;align-items:center;gap:8px;height:44px;
       padding:0 18px 0 14px;border:0;border-radius:999px;font:600 14px/1 'Manrope',sans-serif;cursor:pointer;}
-    .tt-exit{right:max(14px,env(safe-area-inset-right));}
-    .tt-back{left:max(14px,env(safe-area-inset-left));}
+    .tt-exit{right:max(14px,env(safe-area-inset-right));color:#a0453b;}
+    .tt-back{left:max(14px,env(safe-area-inset-left));color:var(--ink2);}
 
     /* tablet em pé: marca, foto, miniaturas, curiosidade, selos e botão em coluna */
     @media (orientation:portrait){
@@ -4741,8 +4736,8 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
       grid-template-rows:1fr auto auto auto 1fr;
       grid-template-areas:". pad" "head pad" "tel pad" "go pad" ". pad";
       padding:clamp(24px,4.4vh,46px) clamp(24px,3.6vw,52px);border-radius:34px;color:#241d13;
-      background:linear-gradient(170deg,#fffdf8,#f6eee0);
-      box-shadow:0 60px 110px -40px rgba(0,0,0,.85),0 0 0 1px rgba(226,181,105,.45);
+      background:#fffdf9;
+      box-shadow:0 0 0 1px rgba(154,125,86,.14),0 40px 90px -36px rgba(120,80,30,.4),0 6px 20px rgba(70,45,15,.05);
       animation:tt-card-in .7s var(--saida) backwards;}
     .tt-idcard.so{max-width:540px;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto;grid-template-areas:"head" "tel" "go";}
     @keyframes tt-card-in{from{opacity:0;transform:translateY(22px) scale(.98)}to{opacity:1;transform:none}}
@@ -4774,8 +4769,8 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
     .tt-key.aux:active{background:#f1e6d2;transform:scale(.95);}
     .tt-go{margin-top:clamp(18px,3vh,26px);width:100%;height:clamp(56px,7.6vh,66px);border:0;border-radius:999px;cursor:pointer;
       display:flex;align-items:center;justify-content:center;gap:10px;
-      background:linear-gradient(100deg,#b8823a,#e2b569 55%,#f3d9a0);color:#1c130a;font:700 17px/1 'Manrope',sans-serif;letter-spacing:.03em;
-      box-shadow:0 16px 32px -12px rgba(176,122,46,.7),inset 0 1px 0 rgba(255,246,222,.6);transition:transform .16s var(--saida),opacity .2s;}
+      background:var(--dourado);color:#fff;font:700 17px/1 'Manrope',sans-serif;letter-spacing:.03em;
+      box-shadow:0 14px 30px -10px rgba(154,125,86,.55),inset 0 1px 0 rgba(255,255,255,.35);transition:transform .16s var(--saida),opacity .2s;}
     .tt-go:active{transform:scale(.98);}
     .tt-go:disabled{opacity:.6;cursor:default;}
     @media (orientation:portrait){
@@ -4802,7 +4797,7 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
         <style>{G}</style>
         <style>{TOTEM_CSS}</style>
         <div className={'tt-wrap tt-id'+(idView==='nome'?' nome':'')}>
-          <button className="tt-back vidro vidro-escuro" onClick={idView==='nome'?()=>{setErr('');setIdView('phone')}:voltarTotem}>
+          <button className="tt-back vidro vidro-claro" onClick={idView==='nome'?()=>{setErr('');setIdView('phone')}:voltarTotem}>
             <TtIco.seta esq/> Voltar
           </button>
           <div className={'tt-idcard'+(idView==='nome'?' so':'')} key={idView}>
@@ -4863,7 +4858,7 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
       <style>{G}</style>
       <style>{TOTEM_CSS}</style>
       <div className="tt-wrap tt-vitrine">
-        <button className="tt-exit vidro vidro-escuro" aria-label="Sair do totem" onClick={()=>{if(window.confirm('Sair do modo totem?'))onExit()}}>
+        <button className="tt-exit vidro vidro-claro" aria-label="Sair do totem" onClick={()=>{if(window.confirm('Sair do modo totem?'))onExit()}}>
           <TtIco.sair/> Sair
         </button>
 
@@ -4887,9 +4882,9 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
             {fPrev!=null&&slide(fPrev,true)}
             {slide(fCur,false)}
             {nFotos>1&&<>
-              <button className="tt-nav esq vidro vidro-escuro" onClick={()=>irFoto(-1)} aria-label="Anterior"><TtIco.seta esq/></button>
-              <button className="tt-nav dir vidro vidro-escuro" onClick={()=>irFoto(1)} aria-label="Próxima"><TtIco.seta/></button>
-              <div className="tt-count vidro vidro-escuro" aria-hidden="true"><b>{dois(fCur+1)}</b> / {dois(nFotos)}</div>
+              <button className="tt-nav esq vidro vidro-claro" onClick={()=>irFoto(-1)} aria-label="Anterior"><TtIco.seta esq/></button>
+              <button className="tt-nav dir vidro vidro-claro" onClick={()=>irFoto(1)} aria-label="Próxima"><TtIco.seta/></button>
+              <div className="tt-count vidro vidro-claro" aria-hidden="true"><b>{dois(fCur+1)}</b> / {dois(nFotos)}</div>
             </>}
           </>:(
             <div className="tt-ph"><div className="i">💅</div><div>Adicione fotos no painel para exibir aqui.</div></div>
@@ -4959,7 +4954,7 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
             <span className="tt-cta-t1">{cfg.cta?.titulo||'Agende seu horário'}</span>
             {(cfg.cta?.texto)&&<span className="tt-cta-t2">{cfg.cta.texto}</span>}
           </span>
-          <span className="tt-cta-go vidro vidro-escuro"><TtIco.seta/></span>
+          <span className="tt-cta-go vidro vidro-claro"><TtIco.seta/></span>
         </button>
       </div>
     </>
