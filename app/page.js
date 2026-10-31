@@ -3074,6 +3074,46 @@ function FolhaInferior({aberta,onFechar,titulo,children}){
   )
 }
 
+// ── LIQUID GLASS ─────────────────────────────────────
+// Vidro no estilo da Apple, só com CSS (funciona em iPhone, Android e
+// computador): fosco translúcido que realça a cor do que está atrás,
+// borda que pega luz, reflexo no alto e, ao tocar, o vidro cresce e
+// acende no ponto do dedo. Quem pede "reduzir transparência" vê sólido.
+const VIDRO_CSS=`
+  .vidro{isolation:isolate;-webkit-backdrop-filter:blur(12px) saturate(185%);backdrop-filter:blur(12px) saturate(185%);
+    transition:transform .5s cubic-bezier(.34,1.56,.64,1),box-shadow .3s ease;}
+  .vidro::before,.vidro::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:-1;}
+  .vidro::before{background:radial-gradient(130% 80% at 28% -12%,rgba(255,255,255,.4),rgba(255,255,255,0) 58%);}
+  .vidro::after{padding:1px;
+    background:linear-gradient(135deg,rgba(255,255,255,.88),rgba(255,255,255,.14) 36%,rgba(255,255,255,.05) 62%,rgba(255,240,214,.6));
+    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
+    mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0);}
+  button.vidro:active{transform:scale(1.07);transition-duration:.16s;}
+  button.vidro:active::before{background:radial-gradient(70px circle at var(--tx,50%) var(--ty,50%),rgba(255,255,255,.6),rgba(255,255,255,0) 72%),
+    radial-gradient(130% 80% at 28% -12%,rgba(255,255,255,.4),rgba(255,255,255,0) 58%);}
+  .vidro-escuro{color:#fbf1de;background:linear-gradient(180deg,rgba(255,255,255,.15),rgba(255,255,255,.03)),rgba(20,13,7,.32);
+    box-shadow:inset 0 1px 1px rgba(255,255,255,.32),inset 0 -1px 1px rgba(255,255,255,.08),0 12px 30px -10px rgba(0,0,0,.6);}
+  .vidro-claro{background:linear-gradient(180deg,rgba(255,255,255,.66),rgba(255,255,255,.3));
+    box-shadow:inset 0 1px 1px rgba(255,255,255,.95),inset 0 -1px 1px rgba(255,255,255,.4),0 10px 26px -10px rgba(70,45,15,.32),0 1px 2px rgba(70,45,15,.07);}
+  @media (prefers-reduced-transparency:reduce){
+    .vidro{-webkit-backdrop-filter:none;backdrop-filter:none;}
+    .vidro-escuro{background:#2a1e12;} .vidro-claro{background:#fffdf9;}
+  }
+  @media (prefers-reduced-motion:reduce){button.vidro:active{transform:none;}}
+`
+// guarda onde o dedo encostou, para o vidro acender naquele ponto
+function useBrilhoVidro(){
+  useEffect(()=>{
+    const f=e=>{
+      const el=e.target&&e.target.closest&&e.target.closest('.vidro');if(!el)return
+      const r=el.getBoundingClientRect()
+      el.style.setProperty('--tx',(e.clientX-r.left)+'px');el.style.setProperty('--ty',(e.clientY-r.top)+'px')
+    }
+    document.addEventListener('pointerdown',f,{passive:true})
+    return()=>document.removeEventListener('pointerdown',f)
+  },[])
+}
+
 function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
   const [tab,setTab]=useState('agendar')
   const [srvs,setSrvs]=useState([])
@@ -3093,7 +3133,9 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
   const [fotoPopup,setFotoPopup]=useState(null)
   const [sucesso,setSucesso]=useState(false)
   const [rolou,setRolou]=useState(false)
+  useBrilhoVidro()
   const fileRef=useRef(null)
+  const gota=useRef({ultimo:null,n:-1})
   const heroRef=useRef(null),ultimaFotoRef=useRef(null),segRef=useRef(null),passoSrvRef=useRef(null),passoDataRef=useRef(null),rolouRef=useRef(false)
   const [,setFuncTick]=useState(0)
   const [portal,setPortal]=useState(DEFAULT_PORTAL)
@@ -3267,8 +3309,10 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
   const primeiroNome=(cliente.full_name||'').split(' ')[0]
   const TABS=[{id:'agendar',l:'Agendar'},{id:'historico',l:'Reservas'},{id:'sobre',l:'Sobre'}]
   const iTab=Math.max(0,TABS.findIndex(t=>t.id===tab))
+  // a gota de vidro estica a cada troca de aba (alterna o nome da animação para ela tocar de novo)
+  if(gota.current.ultimo!==iTab){gota.current.ultimo=iTab;gota.current.n++}
 
-  const css=`
+  const css=`${VIDRO_CSS}
     body{background:#FBF8F3!important;margin:0;}
     .cp-root{--ink:#2a2017;--ink2:#7d6c55;--ink3:#b0a089;--ouro:#9A7D56;--ouro2:#C5A880;--hair:rgba(154,125,86,.16);
       --mola:cubic-bezier(.32,.72,0,1);--saida:cubic-bezier(.16,1,.3,1);min-height:100dvh;color:var(--ink);}
@@ -3276,18 +3320,20 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
 
     /* ── Cabeçalho: vidro fosco sobre a foto ── */
     .cp-hdr{position:fixed;top:0;left:0;right:0;z-index:120;padding-top:env(safe-area-inset-top,0px);}
-    .cp-hdr::before{content:'';position:absolute;inset:0;z-index:-1;pointer-events:none;opacity:0;
-      background:rgba(251,248,243,.84);-webkit-backdrop-filter:blur(18px) saturate(170%);backdrop-filter:blur(18px) saturate(170%);
-      box-shadow:0 1px 0 var(--hair),0 10px 30px rgba(70,45,15,.06);transition:opacity .35s var(--saida);}
+    .cp-hdr::before{content:'';position:absolute;left:0;right:0;top:0;bottom:-22px;z-index:-1;pointer-events:none;opacity:0;
+      background:linear-gradient(to bottom,rgba(251,248,243,.82) 45%,rgba(251,248,243,0));
+      -webkit-backdrop-filter:blur(10px) saturate(160%);backdrop-filter:blur(10px) saturate(160%);
+      -webkit-mask-image:linear-gradient(to bottom,#000 55%,transparent);mask-image:linear-gradient(to bottom,#000 55%,transparent);
+      transition:opacity .35s var(--saida);}
+    .cp-quem{position:relative;display:flex;align-items:center;gap:10px;min-width:0;padding:4px 18px 4px 4px;border-radius:999px;}
     .cp-hdr.solid::before{opacity:1;}
     .cp-hdr-in{max-width:520px;margin:0 auto;height:58px;padding:0 18px;display:flex;align-items:center;justify-content:space-between;}
     .cp-av{width:38px;height:38px;border-radius:50%;flex-shrink:0;background:linear-gradient(135deg,var(--ouro2),var(--ouro));display:flex;align-items:center;justify-content:center;
       font-family:'Noto Serif',serif;font-weight:700;font-size:16px;color:#fff;box-shadow:0 4px 12px rgba(154,125,86,.35),inset 0 1px 0 rgba(255,255,255,.35);}
     .cp-ola{font-size:11px;color:var(--ink2);font-weight:600;}
     .cp-nome{font-size:15px;font-weight:800;color:var(--ink);letter-spacing:-.2px;}
-    .cp-sair{border:1px solid var(--hair);background:rgba(255,253,249,.7);color:#a0453b;font-family:'Manrope',sans-serif;font-size:12px;font-weight:700;
-      padding:8px 15px;border-radius:999px;cursor:pointer;transition:transform .12s ease-out;}
-    .cp-sair:active{transform:scale(.94);}
+    .cp-sair{position:relative;height:46px;border:0;color:#a0453b;font-family:'Manrope',sans-serif;font-size:13px;font-weight:700;
+      padding:0 20px;border-radius:999px;cursor:pointer;}
 
     /* ── Topo: a Morgane se dissolvendo no fundo ── */
     .cp-hero{position:relative;width:100%;height:440px;height:clamp(380px,56svh,500px);overflow:hidden;}
@@ -3316,9 +3362,14 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
     .cp-main.com-cta{padding-bottom:132px;}
 
     /* ── Abas: controle segmentado com pílula deslizante ── */
-    .cp-seg{position:relative;display:grid;grid-template-columns:repeat(3,1fr);padding:4px;border-radius:16px;background:rgba(154,125,86,.10);margin:18px 0 24px;}
-    .cp-seg-pilula{position:absolute;top:4px;bottom:4px;left:4px;width:calc((100% - 8px) / 3);border-radius:12px;background:#fffdf9;
-      box-shadow:0 1px 2px rgba(70,45,15,.08),0 6px 16px rgba(70,45,15,.10);transition:transform .5s var(--mola);}
+    .cp-seg{position:relative;display:grid;grid-template-columns:repeat(3,1fr);padding:4px;border-radius:999px;margin:18px 0 24px;
+      background:rgba(154,125,86,.10);box-shadow:inset 0 1px 2px rgba(70,45,15,.08),inset 0 0 0 1px rgba(154,125,86,.05);}
+    .cp-seg-pilula{position:absolute;top:4px;bottom:4px;left:4px;width:calc((100% - 8px) / 3);border-radius:999px;transition:transform .5s var(--mola);}
+    .cp-seg-pilula.vidro-claro{background:linear-gradient(180deg,rgba(255,255,255,.95),rgba(255,253,249,.7));}
+    .cp-seg-pilula.gota0{animation:cp-gota0 .55s var(--mola);}
+    .cp-seg-pilula.gota1{animation:cp-gota1 .55s var(--mola);}
+    @keyframes cp-gota0{0%{scale:1 1}35%{scale:1.1 .9}100%{scale:1 1}}
+    @keyframes cp-gota1{0%{scale:1 1}35%{scale:1.1 .9}100%{scale:1 1}}
     .cp-seg button{position:relative;z-index:1;border:none;background:none;padding:11px 4px;font-family:'Manrope',sans-serif;font-size:13px;font-weight:700;
       color:var(--ink2);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:color .25s,transform .12s ease-out;}
     .cp-seg button.on{color:var(--ink);}
@@ -3404,9 +3455,10 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
       transform:translate3d(0,130%,0);opacity:0;transition:transform .55s var(--mola),opacity .3s ease;}
     .cp-cta.on{transform:none;opacity:1;}
     .cp-cta.on .cp-cta-in{pointer-events:auto;}
-    .cp-cta-in{max-width:492px;margin:0 auto;display:flex;align-items:center;gap:12px;padding:10px 10px 10px 18px;border-radius:24px;
-      background:rgba(255,253,249,.80);-webkit-backdrop-filter:blur(22px) saturate(180%);backdrop-filter:blur(22px) saturate(180%);
-      border:1px solid rgba(255,255,255,.75);box-shadow:0 20px 50px rgba(70,45,15,.22),inset 0 1px 0 rgba(255,255,255,.85);}
+    .cp-cta-in{position:relative;max-width:492px;margin:0 auto;display:flex;align-items:center;gap:12px;padding:10px 10px 10px 18px;border-radius:26px;
+      -webkit-backdrop-filter:blur(26px) saturate(190%);backdrop-filter:blur(26px) saturate(190%);}
+    .cp-cta-in.vidro-claro{background:linear-gradient(180deg,rgba(255,255,255,.86),rgba(255,251,244,.74));
+      box-shadow:inset 0 1px 1px rgba(255,255,255,.95),inset 0 -1px 1px rgba(255,255,255,.45),0 22px 50px -12px rgba(70,45,15,.32),0 2px 6px rgba(70,45,15,.08);}
     .cp-cta-txt{flex:1;min-width:0;}
     .cp-cta-txt b{display:block;font-size:14px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
     .cp-cta-txt span{font-size:12px;color:var(--ink2);font-weight:600;}
@@ -3418,16 +3470,15 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
     .cp-btn-ouro::after{content:'';position:absolute;top:0;left:-120%;width:50%;height:100%;background:linear-gradient(105deg,transparent,rgba(255,255,255,.45),transparent);
       transform:skewX(-18deg);animation:cp-reflexo 5s 1.5s ease-in-out infinite;}
     @keyframes cp-reflexo{0%{left:-120%}28%,100%{left:160%}}
-    .cp-btn-leve{border:1px solid var(--hair);background:rgba(255,253,249,.7);color:var(--ink2);cursor:pointer;border-radius:16px;padding:14px 18px;
-      font-family:'Manrope',sans-serif;font-size:13px;font-weight:700;transition:transform .14s ease-out;}
-    .cp-btn-leve:active{transform:scale(.96);}
+    .cp-btn-leve{position:relative;border:0;color:var(--ink2);cursor:pointer;border-radius:18px;padding:14px 18px;
+      font-family:'Manrope',sans-serif;font-size:13px;font-weight:700;}
 
     /* ── Folha inferior ── */
     .cp-veu{position:fixed;inset:0;z-index:300;background:rgba(36,24,12,.42);opacity:0;transition:opacity .45s var(--mola);}
     .cp-veu.on{opacity:1;}
     .cp-folha{position:fixed;left:0;right:0;bottom:0;margin:0 auto;max-width:520px;z-index:301;max-height:88dvh;overflow-y:auto;overscroll-behavior:contain;
       background:rgba(255,253,249,.94);-webkit-backdrop-filter:blur(26px) saturate(180%);backdrop-filter:blur(26px) saturate(180%);
-      border-radius:30px 30px 0 0;border-top:1px solid rgba(255,255,255,.8);box-shadow:0 -24px 70px rgba(70,45,15,.28);
+      border-radius:30px 30px 0 0;border-top:1px solid rgba(255,255,255,.8);box-shadow:inset 0 1px 1px rgba(255,255,255,.95),0 -24px 70px rgba(70,45,15,.28);
       padding:0 22px calc(22px + env(safe-area-inset-bottom,0px));transform:translate3d(0,100%,0);transition:transform .46s var(--mola);}
     .cp-folha.on{transform:none;}
     .cp-pega{display:flex;justify-content:center;padding:10px 0 14px;touch-action:none;cursor:grab;}
@@ -3482,7 +3533,7 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
       .cp-hero-img,.cp-hero-txt{transform:none!important;opacity:1!important;}
     }
     @media (prefers-reduced-transparency:reduce){
-      .cp-hdr::before,.cp-cta-in,.cp-folha,.cp-ok{background:#fffdf9!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;}
+      .cp-hdr::before,.cp-cta-in,.cp-folha,.cp-ok,.cp-quem,.cp-sair{background:#fffdf9!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;}
     }
   `
 
@@ -3502,14 +3553,14 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
       {/* CABEÇALHO */}
       <header className={`cp-hdr${rolou?' solid':''}`}>
         <div className="cp-hdr-in">
-          <div style={{display:'flex',alignItems:'center',gap:11,minWidth:0}}>
+          <div className="cp-quem vidro vidro-claro">
             <div className="cp-av">{(cliente.full_name||'?')[0]}</div>
             <div style={{minWidth:0}}>
               <div className="cp-ola">Olá,</div>
               <div className="cp-nome" style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{primeiroNome}</div>
             </div>
           </div>
-          <button className="cp-sair" onClick={onLogout}>Sair</button>
+          <button className="cp-sair vidro vidro-claro" onClick={onLogout}>Sair</button>
         </div>
       </header>
 
@@ -3532,7 +3583,7 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
       <main className={`cp-main${pronto&&tab==='agendar'?' com-cta':''}`}>
         {/* ABAS */}
         <div className="cp-seg" role="tablist" ref={segRef}>
-          <span className="cp-seg-pilula" style={{transform:`translateX(${iTab*100}%)`}}/>
+          <span className={'cp-seg-pilula vidro vidro-claro'+(gota.current.n?' gota'+(gota.current.n%2):'')} style={{transform:`translateX(${iTab*100}%)`}}/>
           {TABS.map(t=>(
             <button key={t.id} role="tab" aria-selected={tab===t.id} className={tab===t.id?'on':''} onClick={()=>trocarTab(t.id)}>
               {t.l}{t.id==='historico'&&proximas.length>0&&<span className="cp-bolinha">{proximas.length}</span>}
@@ -3793,7 +3844,7 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
 
       {/* BARRA FLUTUANTE — aparece quando o agendamento está completo */}
       <div className={`cp-cta${pronto&&tab==='agendar'&&!showConfirm?' on':''}`} aria-hidden={!pronto}>
-        <div className="cp-cta-in">
+        <div className="cp-cta-in vidro vidro-claro">
           <div className="cp-cta-txt">
             <b>{selSrv?.name||''}</b>
             <span>{selDmy?dataCurta(selDmy):''} · {selTime} · {fmtCurrency(selSrv?.price||0)}</span>
@@ -3823,7 +3874,7 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
         <button className="cp-btn-ouro" style={{width:'100%',padding:16,fontSize:14}} onClick={confirmar} disabled={sending}>
           {sending?'Enviando…':'Confirmar agendamento'}
         </button>
-        <button className="cp-btn-leve" style={{width:'100%',marginTop:10}} onClick={()=>setShowConfirm(false)}>Voltar e ajustar</button>
+        <button className="cp-btn-leve vidro vidro-claro" style={{width:'100%',marginTop:10}} onClick={()=>setShowConfirm(false)}>Voltar e ajustar</button>
       </FolhaInferior>
 
       {/* FOTO DE REFERÊNCIA */}
@@ -4392,6 +4443,7 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
   const [info,setInfo]=useState({i:0,prev:null,n:0})
   const stripRef=useRef(null)
   const toque=useRef(null)
+  useBrilhoVidro()
 
   useEffect(()=>{
     let vivo=true
@@ -4509,7 +4561,7 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
     return <PortalCliente cliente={cli} onLogout={voltarTotem} salonName={salonName}/>
   }
 
-  const TOTEM_CSS=`
+  const TOTEM_CSS=`${VIDRO_CSS}
     body{background:
       radial-gradient(80% 60% at 6% 38%,rgba(226,181,105,.16),transparent 55%),
       radial-gradient(90% 70% at 100% 100%,rgba(189,111,140,.10),transparent 55%),
@@ -4568,14 +4620,16 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
     .tt-ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
       text-align:center;padding:30px;color:var(--creme-2);font-size:15px;line-height:1.5;}
     .tt-ph .i{font-size:48px;}
+    .tt-nav{position:absolute;top:50%;z-index:4;width:58px;height:58px;margin-top:-29px;border:0;border-radius:50%;
+      display:grid;place-items:center;cursor:pointer;}
+    .tt-nav.esq{left:14px;} .tt-nav.dir{right:14px;}
+    .tt-count{position:absolute;left:50%;bottom:14px;z-index:4;transform:translateX(-50%);padding:9px 16px;border-radius:999px;
+      font:600 13px/1 'Manrope',sans-serif;letter-spacing:.14em;font-variant-numeric:tabular-nums;color:rgba(251,241,222,.82);}
+    .tt-count b{color:#fff8ea;font-weight:700;}
 
     /* miniaturas */
     .tt-thumbs{display:flex;align-items:center;gap:10px;min-width:0;}
-    .tt-arrow{flex:0 0 auto;width:52px;height:52px;border-radius:50%;border:1px solid var(--linha-forte);
-      background:rgba(28,20,12,.72);color:var(--ouro);display:grid;place-items:center;cursor:pointer;
-      transition:transform .16s var(--saida),background-color .16s;}
-    .tt-arrow:active{transform:scale(.92);background:rgba(226,181,105,.18);}
-    .tt-thumbstrip{position:relative;flex:1;min-width:0;display:flex;gap:10px;overflow-x:auto;padding:4px 16px;scrollbar-width:none;
+    .tt-thumbstrip{position:relative;flex:1;min-width:0;display:flex;gap:10px;overflow-x:auto;padding:4px 16px;scrollbar-width:none;margin:0 -16px;
       -webkit-mask-image:linear-gradient(90deg,transparent,#000 16px,#000 calc(100% - 16px),transparent);
       mask-image:linear-gradient(90deg,transparent,#000 16px,#000 calc(100% - 16px),transparent);}
     .tt-thumbstrip::-webkit-scrollbar{display:none;}
@@ -4644,24 +4698,23 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
       transform:translateX(-130%) skewX(-18deg);animation:tt-brilho 8s 2.5s ease-in-out infinite;}
     @keyframes tt-brilho{0%{transform:translateX(-130%) skewX(-18deg)}20%,100%{transform:translateX(480%) skewX(-18deg)}}
     .tt-cta:active{transform:scale(.985);}
-    .tt-cta-ic{flex:0 0 auto;width:clamp(48px,7vh,64px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;
-      color:#2a1c0d;background:rgba(255,248,230,.28);box-shadow:inset 0 0 0 1px rgba(42,28,13,.18);}
+    .tt-cta-ic{position:relative;flex:0 0 auto;width:clamp(48px,7vh,64px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;color:#2a1c0d;}
+    .tt-cta-ic.vidro-claro{background:linear-gradient(180deg,rgba(255,255,255,.55),rgba(255,248,232,.18));}
     .tt-cta-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;}
     .tt-cta-t1{font-family:'Noto Serif',serif;font-weight:700;font-size:clamp(19px,2.1vw,28px);line-height:1.1;letter-spacing:.08em;
       text-transform:uppercase;color:#1c130a;}
     .tt-cta-t2{font:500 clamp(13px,1.15vw,15px)/1.35 'Manrope',sans-serif;color:rgba(36,24,10,.8);}
-    .tt-cta-go{flex:0 0 auto;width:clamp(52px,7.6vh,70px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;
-      background:#1a120a;color:var(--ouro-claro);box-shadow:0 8px 18px -6px rgba(26,18,10,.55);}
+    .tt-cta-go{position:relative;flex:0 0 auto;width:clamp(52px,7.6vh,70px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;color:var(--ouro-claro);}
+    .tt-cta-go.vidro-escuro{background:linear-gradient(180deg,rgba(255,255,255,.14),rgba(255,255,255,0)),rgba(24,15,7,.66);
+      box-shadow:inset 0 1px 1px rgba(255,236,200,.4),inset 0 -1px 1px rgba(255,255,255,.08),0 10px 22px -8px rgba(26,18,10,.6);}
     .tt-cta-go svg{animation:tt-cutuca 4s 3s var(--saida) infinite;}
     @keyframes tt-cutuca{0%,80%,100%{transform:none}87%{transform:translateX(5px)}94%{transform:translateX(-1px)}}
 
     /* sair / voltar */
-    .tt-exit,.tt-back{position:fixed;top:max(14px,env(safe-area-inset-top));z-index:10;display:flex;align-items:center;gap:8px;height:42px;
-      padding:0 17px 0 13px;border-radius:999px;background:rgba(22,15,9,.74);border:1px solid var(--linha-forte);color:var(--creme-2);
-      font:600 14px/1 'Manrope',sans-serif;cursor:pointer;transition:transform .16s var(--saida),background-color .16s;}
+    .tt-exit,.tt-back{position:fixed;top:max(14px,env(safe-area-inset-top));z-index:10;display:flex;align-items:center;gap:8px;height:44px;
+      padding:0 18px 0 14px;border:0;border-radius:999px;font:600 14px/1 'Manrope',sans-serif;cursor:pointer;}
     .tt-exit{right:max(14px,env(safe-area-inset-right));}
     .tt-back{left:max(14px,env(safe-area-inset-left));}
-    .tt-exit:active,.tt-back:active{transform:scale(.95);background:rgba(226,181,105,.16);}
 
     /* tablet em pé: marca, foto, miniaturas, curiosidade, selos e botão em coluna */
     @media (orientation:portrait){
@@ -4713,13 +4766,12 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
     .tt-input:focus{border-bottom-color:#e2b569;}
     .tt-input::placeholder{color:#cdbfa6;}
     .tt-err{color:#b23b4e;font-size:14px;font-weight:500;line-height:1.4;margin-top:10px;}
-    .tt-key{height:clamp(56px,9vh,78px);border-radius:20px;border:0;cursor:pointer;display:grid;place-items:center;
-      background:#f3eadb;box-shadow:inset 0 0 0 1px rgba(138,87,25,.13),0 1px 0 rgba(255,255,255,.9);
-      font:600 clamp(24px,3.4vh,31px)/1 'Manrope',sans-serif;color:#241d13;font-variant-numeric:tabular-nums;
-      transition:transform .12s var(--saida),background-color .12s;}
-    .tt-key:active{transform:scale(.94);background:#ecd6a8;}
-    .tt-key.aux{background:transparent;box-shadow:none;color:#8a7a63;font-size:15px;font-weight:600;letter-spacing:.02em;}
-    .tt-key.aux:active{background:#f1e6d2;}
+    .tt-key{position:relative;height:clamp(56px,9vh,78px);border-radius:22px;border:0;cursor:pointer;display:grid;place-items:center;background:none;
+      font:600 clamp(24px,3.4vh,31px)/1 'Manrope',sans-serif;color:#241d13;font-variant-numeric:tabular-nums;}
+    .tt-key.vidro-claro{background:linear-gradient(180deg,rgba(255,255,255,.95),rgba(246,236,219,.75));
+      box-shadow:inset 0 1px 1px #fff,inset 0 -1px 1px rgba(255,255,255,.5),inset 0 0 0 1px rgba(138,87,25,.08),0 8px 18px -10px rgba(110,72,25,.4),0 1px 2px rgba(110,72,25,.1);}
+    .tt-key.aux{color:#8a7a63;font-size:15px;font-weight:600;letter-spacing:.02em;transition:transform .16s var(--saida),background-color .16s;}
+    .tt-key.aux:active{background:#f1e6d2;transform:scale(.95);}
     .tt-go{margin-top:clamp(18px,3vh,26px);width:100%;height:clamp(56px,7.6vh,66px);border:0;border-radius:999px;cursor:pointer;
       display:flex;align-items:center;justify-content:center;gap:10px;
       background:linear-gradient(100deg,#b8823a,#e2b569 55%,#f3d9a0);color:#1c130a;font:700 17px/1 'Manrope',sans-serif;letter-spacing:.03em;
@@ -4734,6 +4786,7 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
 
     @media (prefers-reduced-motion:reduce){
       .tt-in,.tt-info-ic,.tt-slide.in .tt-slide-img,.tt-cta::after,.tt-cta-go svg,.tt-idcard{animation:none!important;}
+      .tt-key.aux:active{transform:none;}
       .tt-slide.in{animation-duration:.6s;}
       .tt-info-item.in{animation:tt-foto-in .5s ease both;}
       .tt-info-item.out{animation:none;opacity:0;}
@@ -4749,7 +4802,7 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
         <style>{G}</style>
         <style>{TOTEM_CSS}</style>
         <div className={'tt-wrap tt-id'+(idView==='nome'?' nome':'')}>
-          <button className="tt-back" onClick={idView==='nome'?()=>{setErr('');setIdView('phone')}:voltarTotem}>
+          <button className="tt-back vidro vidro-escuro" onClick={idView==='nome'?()=>{setErr('');setIdView('phone')}:voltarTotem}>
             <TtIco.seta esq/> Voltar
           </button>
           <div className={'tt-idcard'+(idView==='nome'?' so':'')} key={idView}>
@@ -4773,10 +4826,10 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
             {idView==='phone'&&(
               <div className="tt-pad">
                 {['1','2','3','4','5','6','7','8','9'].map(k=>(
-                  <button key={k} className="tt-key" onClick={()=>tecla(k)}>{k}</button>
+                  <button key={k} className="tt-key vidro vidro-claro" onClick={()=>tecla(k)}>{k}</button>
                 ))}
                 <button className="tt-key aux" onClick={()=>tecla('limpar')}>Limpar</button>
-                <button className="tt-key" onClick={()=>tecla('0')}>0</button>
+                <button className="tt-key vidro vidro-claro" onClick={()=>tecla('0')}>0</button>
                 <button className="tt-key aux" onClick={()=>tecla('del')} aria-label="Apagar"><TtIco.apagar/></button>
               </div>
             )}
@@ -4810,7 +4863,7 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
       <style>{G}</style>
       <style>{TOTEM_CSS}</style>
       <div className="tt-wrap tt-vitrine">
-        <button className="tt-exit" aria-label="Sair do totem" onClick={()=>{if(window.confirm('Sair do modo totem?'))onExit()}}>
+        <button className="tt-exit vidro vidro-escuro" aria-label="Sair do totem" onClick={()=>{if(window.confirm('Sair do modo totem?'))onExit()}}>
           <TtIco.sair/> Sair
         </button>
 
@@ -4822,7 +4875,7 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
 
         {/* foto em destaque — carrossel automático; toque ou arraste para trocar */}
         <section className="tt-stage tt-in" aria-label="Fotos dos trabalhos"
-          onPointerDown={e=>{toque.current={x:e.clientX,y:e.clientY}}}
+          onPointerDown={e=>{toque.current=e.target.closest('button')?null:{x:e.clientX,y:e.clientY}}}
           onPointerUp={e=>{
             const t=toque.current;toque.current=null;if(!t)return
             const dx=e.clientX-t.x,dy=e.clientY-t.y
@@ -4833,6 +4886,11 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
           {nFotos>0?<>
             {fPrev!=null&&slide(fPrev,true)}
             {slide(fCur,false)}
+            {nFotos>1&&<>
+              <button className="tt-nav esq vidro vidro-escuro" onClick={()=>irFoto(-1)} aria-label="Anterior"><TtIco.seta esq/></button>
+              <button className="tt-nav dir vidro vidro-escuro" onClick={()=>irFoto(1)} aria-label="Próxima"><TtIco.seta/></button>
+              <div className="tt-count vidro vidro-escuro" aria-hidden="true"><b>{dois(fCur+1)}</b> / {dois(nFotos)}</div>
+            </>}
           </>:(
             <div className="tt-ph"><div className="i">💅</div><div>Adicione fotos no painel para exibir aqui.</div></div>
           )}
@@ -4840,7 +4898,6 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
 
         {nFotos>1&&(
           <div className="tt-thumbs tt-in" style={{'--d':'.2s'}}>
-            <button className="tt-arrow" onClick={()=>irFoto(-1)} aria-label="Anterior"><TtIco.seta esq/></button>
             <div className="tt-thumbstrip" ref={stripRef}>
               {fotos.map((f,i)=>(
                 <button key={f.path||i} className={'tt-thumb'+(i===fCur?' on':'')} onClick={()=>fotoEm(i)} aria-label={'Foto '+(i+1)}>
@@ -4849,7 +4906,6 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
                 </button>
               ))}
             </div>
-            <button className="tt-arrow" onClick={()=>irFoto(1)} aria-label="Próxima"><TtIco.seta/></button>
           </div>
         )}
 
@@ -4898,12 +4954,12 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
 
         {/* CTA dourado */}
         <button className="tt-cta tt-in" style={{'--d':'.32s'}} onClick={abrirAgendar}>
-          <span className="tt-cta-ic"><TtIco.cal/></span>
+          <span className="tt-cta-ic vidro vidro-claro"><TtIco.cal/></span>
           <span className="tt-cta-text">
             <span className="tt-cta-t1">{cfg.cta?.titulo||'Agende seu horário'}</span>
             {(cfg.cta?.texto)&&<span className="tt-cta-t2">{cfg.cta.texto}</span>}
           </span>
-          <span className="tt-cta-go"><TtIco.seta/></span>
+          <span className="tt-cta-go vidro vidro-escuro"><TtIco.seta/></span>
         </button>
       </div>
     </>
