@@ -4356,17 +4356,42 @@ function MesaAdmin({toast2,onMesa}){
 // ══════════════════════════════════════════════════════
 // TOTEM / PERFIL MESA (tela do tablet)
 // ══════════════════════════════════════════════════════
+// Ícones desenhados do totem (o emoji 📅 aparecia como "July 17" no Android)
+const TtIco={
+  cal:()=>(<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="3.2"/><path d="M3.5 10h17M8 3v4M16 3v4"/><path d="M7.8 13.6h2M11.8 13.6h2M15.8 13.6h.4M7.8 17h2M11.8 17h2"/></svg>),
+  seta:({esq})=>(<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{esq?<path d="M15 5l-7 7 7 7"/>:<path d="M9 5l7 7-7 7"/>}</svg>),
+  sair:()=>(<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 4h3.5A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5H14"/><path d="M10 16l-4-4 4-4M6 12h10"/></svg>),
+  apagar:()=>(<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8.5 5H19a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8.5L3 12z"/><path d="M11.5 9.5l5 5M16.5 9.5l-5 5"/></svg>),
+}
+
+// Telefone digitado no teclado do totem: "(41) 99999-8888".
+// Celular começa com 9 depois do DDD (11 dígitos); fixo tem 10.
+function mascaraTel(d){
+  const tpl=(d.length>2&&d[2]!=='9')?'(##) ####-####':'(##) #####-####'
+  let i=0,feito='',resto=''
+  for(const ch of tpl){
+    if(i<d.length) feito+=(ch==='#'?d[i++]:ch)
+    else resto+=(ch==='#'?'0':ch)
+  }
+  return {feito,resto,max:(tpl.match(/#/g)||[]).length}
+}
+const dois=n=>String(n).padStart(2,'0')
+
 function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
   const [cfg,setCfg]=useState(DEFAULT_MESA)
   const [view,setView]=useState('display')   // display | id | cliente
   const [idView,setIdView]=useState('phone') // phone | nome
-  const [phone,setPhone]=useState('')
+  const [phone,setPhone]=useState('')        // só os dígitos
   const [nome,setNome]=useState('')
   const [cli,setCli]=useState(null)
   const [err,setErr]=useState('')
   const [loading,setLoading]=useState(false)
-  const [fIdx,setFIdx]=useState(0)   // foto em destaque
-  const [bIdx,setBIdx]=useState(0)   // card informativo
+  // Carrosséis: o slide atual e o que está saindo (para a transição suave).
+  // n conta as trocas — reinicia o relógio e a barrinha de progresso.
+  const [foto,setFoto]=useState({i:0,prev:null,n:0})
+  const [info,setInfo]=useState({i:0,prev:null,n:0})
+  const stripRef=useRef(null)
+  const toque=useRef(null)
 
   useEffect(()=>{
     let vivo=true
@@ -4380,27 +4405,39 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
   const banners=(cfg.banners||[]).filter(b=>b&&b.ativo&&(b.titulo||b.texto))
   const destaques=(cfg.destaques||[]).filter(d=>d&&(d.titulo||d.txt))
   const nFotos=fotos.length, nBanners=banners.length
-  const fCur=nFotos?fIdx%nFotos:0
-  const bCur=nBanners?bIdx%nBanners:0
+  const fCur=nFotos?foto.i%nFotos:0
+  const fPrev=(foto.prev!=null&&foto.prev<nFotos&&foto.prev!==fCur)?foto.prev:null
+  const bCur=nBanners?info.i%nBanners:0
+  const bPrev=(info.prev!=null&&info.prev<nBanners&&info.prev!==bCur)?info.prev:null
+  const secs=Math.max(3,Number(cfg.intervalo)||7)
+  const durFoto=secs*1000
+  // a 1ª curiosidade fica meio ciclo a mais: foto e texto não trocam no mesmo instante
+  const durInfo=info.n===0?secs*1500:secs*1000
 
-  // mantém os índices válidos quando o conteúdo muda
-  useEffect(()=>{ if(fIdx>=nFotos)setFIdx(0) },[nFotos,fIdx])
-  useEffect(()=>{ if(bIdx>=nBanners)setBIdx(0) },[nBanners,bIdx])
+  const irFoto=passo=>{ if(nFotos<2)return; setFoto(s=>{const c=s.i%nFotos;return{i:(c+passo+nFotos)%nFotos,prev:c,n:s.n+1}}) }
+  const fotoEm=i=>setFoto(s=>{const c=nFotos?s.i%nFotos:0;return i===c?s:{i,prev:c,n:s.n+1}})
+  const irInfo=passo=>{ if(nBanners<2)return; setInfo(s=>{const c=s.i%nBanners;return{i:(c+passo+nBanners)%nBanners,prev:c,n:s.n+1}}) }
 
-  // avanço automático das duas colunas
+  // Avanço automático: cada carrossel tem o seu relógio, que recomeça quando alguém toca
   useEffect(()=>{
-    if(view!=='display')return
-    if(nFotos<=1&&nBanners<=1)return
-    const secs=Math.max(3,Number(cfg.intervalo)||7)
-    const t=setInterval(()=>{
-      if(nFotos>1)setFIdx(v=>(v+1)%nFotos)
-      if(nBanners>1)setBIdx(v=>(v+1)%nBanners)
-    },secs*1000)
-    return()=>clearInterval(t)
-  },[view,nFotos,nBanners,cfg.intervalo])
+    if(view!=='display'||nFotos<2)return
+    const t=setTimeout(()=>irFoto(1),durFoto)
+    return()=>clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[view,nFotos,foto.n,durFoto])
+  useEffect(()=>{
+    if(view!=='display'||nBanners<2)return
+    const t=setTimeout(()=>irInfo(1),durInfo)
+    return()=>clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[view,nBanners,info.n,durInfo])
 
-  const fotoPrev=()=>{ if(nFotos)setFIdx(v=>(v-1+nFotos)%nFotos) }
-  const fotoNext=()=>{ if(nFotos)setFIdx(v=>(v+1)%nFotos) }
+  // mantém a miniatura ativa à vista (rola só a faixa, nunca a página)
+  useEffect(()=>{
+    const el=stripRef.current; if(!el)return
+    const th=el.children[fCur]; if(!th)return
+    el.scrollTo({left:Math.max(0,th.offsetLeft-(el.clientWidth-th.offsetWidth)/2),behavior:'smooth'})
+  },[fCur,view,nFotos])
 
   // Se a cliente parar no meio do agendamento, volta ao totem sozinho
   useEffect(()=>{
@@ -4420,7 +4457,18 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
   }
   function abrirAgendar(){setErr('');setPhone('');setNome('');setIdView('phone');setView('id')}
 
+  function tecla(k){
+    setErr('')
+    setPhone(p=>{
+      if(k==='del')return p.slice(0,-1)
+      if(k==='limpar')return ''
+      const novo=p+k
+      return novo.length>mascaraTel(novo).max?p:novo
+    })
+  }
+
   async function identificar(){
+    if(loading)return
     if(phone.replace(/\D/g,'').length<10){setErr('Informe um telefone válido, com DDD.');return}
     setLoading(true);setErr('')
     try{
@@ -4432,6 +4480,7 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
     }catch(e){setLoading(false);setErr('Erro de conexão. Tente novamente.')}
   }
   async function cadastrar(){
+    if(loading)return
     if(nome.trim().length<2){setErr('Digite seu nome, por favor.');return}
     setLoading(true);setErr('')
     try{
@@ -4441,6 +4490,19 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
       setCli(json.cliente);setView('cliente')
     }catch(e){setLoading(false);setErr('Erro de conexão. Tente novamente.')}
   }
+
+  // teclado físico também funciona na tela do telefone (útil no computador)
+  useEffect(()=>{
+    if(view!=='id'||idView!=='phone')return
+    const onKey=e=>{
+      if(/^[0-9]$/.test(e.key)){e.preventDefault();tecla(e.key)}
+      else if(e.key==='Backspace'){e.preventDefault();tecla('del')}
+      else if(e.key==='Enter'){e.preventDefault();identificar()}
+    }
+    window.addEventListener('keydown',onKey)
+    return()=>window.removeEventListener('keydown',onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[view,idView,phone,loading])
 
   // ── Agendamento: reaproveita todo o portal da cliente ──
   if(view==='cliente'&&cli){
@@ -4452,126 +4514,275 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
       radial-gradient(80% 60% at 6% 38%,rgba(226,181,105,.16),transparent 55%),
       radial-gradient(90% 70% at 100% 100%,rgba(189,111,140,.10),transparent 55%),
       linear-gradient(155deg,#1c150d 0%,#120c07 55%,#0b0704 100%)!important;}
-    @keyframes ttfade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-    .tt-wrap{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;gap:14px;
-      padding:20px 26px 22px;position:relative;color:#f4ead6;box-sizing:border-box;}
-    /* top bar: logo + sair */
-    .tt-topbar{display:flex;align-items:flex-start;justify-content:space-between;}
-    .tt-logo{font-family:'Parisienne',cursive;font-size:34px;line-height:1;color:#e9cd94;}
-    .tt-logo-sub{font-size:11px;font-weight:700;letter-spacing:6px;text-transform:uppercase;color:#b89355;margin-top:3px;}
-    /* linha principal */
-    .tt-main{display:flex;gap:26px;flex:1;min-height:0;align-items:stretch;}
-    .tt-photocol{flex:0 0 40%;max-width:40%;display:flex;flex-direction:column;gap:14px;min-height:0;}
-    .tt-featured{position:relative;flex:1;min-height:0;border-radius:22px;overflow:hidden;
-      border:1px solid rgba(226,181,105,.35);box-shadow:0 24px 60px rgba(0,0,0,.55);background:#120d07;}
-    .tt-foto-bg{position:absolute;inset:0;background-size:cover;background-position:center;
-      filter:blur(26px) brightness(.5) saturate(1.1);transform:scale(1.25);}
-    .tt-slide{position:absolute;inset:0;opacity:0;transition:opacity 1s ease;pointer-events:none;}
-    .tt-slide.on{opacity:1;}
-    .tt-slide img{position:relative;z-index:1;width:100%;height:100%;object-fit:contain;display:block;}
-    .tt-ph{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;
-      text-align:center;padding:30px;color:#e7dcc6;}
-    .tt-ph .i{font-size:52px;margin-bottom:14px;}
+    body::before{opacity:.35;}
+    .tt-wrap{
+      --ouro:#e2b569;--ouro-claro:#f3d9a0;--ouro-txt:#c99f52;--script:#e9cd94;
+      --creme:#f4ead6;--creme-2:#dccdb0;--creme-3:#9c8b6e;
+      --linha:rgba(226,181,105,.2);--linha-forte:rgba(226,181,105,.42);
+      --saida:cubic-bezier(.22,1,.36,1);
+      position:relative;isolation:isolate;height:100vh;height:100dvh;overflow:hidden;color:var(--creme);
+      padding:max(18px,env(safe-area-inset-top)) clamp(18px,2.4vw,34px) max(18px,env(safe-area-inset-bottom));}
+    /* grão bem leve e parado, dá textura de papel ao fundo */
+    .tt-wrap::before{content:'';position:absolute;inset:0;z-index:-1;pointer-events:none;opacity:.07;
+      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");}
+    .tt-in{animation:tt-sobe .9s var(--saida) backwards;animation-delay:var(--d,0s);}
+    @keyframes tt-sobe{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+    @keyframes tt-prog{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+
+    /* ── grade: foto à esquerda, conteúdo à direita, botão embaixo ── */
+    .tt-vitrine{display:grid;
+      grid-template-columns:minmax(0,42fr) minmax(0,58fr);
+      grid-template-rows:auto minmax(0,1fr) auto auto;
+      grid-template-areas:"stage brand" "stage info" "thumbs badges" "cta cta";
+      column-gap:clamp(18px,2.2vw,30px);row-gap:clamp(12px,2.2vh,20px);}
+    .tt-brand{grid-area:brand;} .tt-stage{grid-area:stage;} .tt-thumbs{grid-area:thumbs;}
+    .tt-info{grid-area:info;} .tt-badges{grid-area:badges;} .tt-cta{grid-area:cta;}
+
+    /* marca */
+    .tt-brand{text-align:center;padding-top:clamp(4px,1.2vh,14px);}
+    .tt-brand-eyebrow{font:700 clamp(10px,.95vw,12px)/1 'Manrope',sans-serif;letter-spacing:.55em;margin-right:-.55em;
+      text-transform:uppercase;color:var(--ouro-txt);}
+    .tt-brand-name{font-family:'Noto Serif',serif;font-weight:600;font-size:clamp(30px,min(3.9vw,7.2vh),58px);line-height:1;
+      letter-spacing:.07em;margin:.34em -.07em 0 0;text-transform:uppercase;color:var(--creme);}
+    .tt-brand-script{display:flex;align-items:center;justify-content:center;gap:16px;margin-top:2px;}
+    .tt-brand-script::before,.tt-brand-script::after{content:'';height:1px;width:clamp(40px,5vw,84px);
+      background:linear-gradient(90deg,transparent,rgba(226,181,105,.85));}
+    .tt-brand-script::after{transform:scaleX(-1);}
+    .tt-brand-script span{font-family:'Parisienne',cursive;font-size:clamp(26px,min(2.5vw,4.8vh),36px);line-height:1.25;color:var(--script);}
+
+    /* foto em destaque — inteira, sem corte; o fundo é a própria foto desfocada */
+    .tt-stage{position:relative;min-height:0;border-radius:clamp(20px,2.3vw,30px);overflow:hidden;background:#140e08;
+      box-shadow:0 34px 70px -24px rgba(0,0,0,.75),0 0 0 1px var(--linha-forte);touch-action:pan-y;cursor:pointer;isolation:isolate;}
+    .tt-stage::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:3;
+      box-shadow:inset 0 1px 0 rgba(255,236,200,.16),inset 0 0 0 1px rgba(255,236,200,.05);}
+    .tt-slide{position:absolute;inset:0;}
+    .tt-slide.in{z-index:2;animation:tt-foto-in 1s var(--saida) both;}
+    .tt-slide.out{z-index:1;}
+    .tt-slide-bg{position:absolute;inset:-8%;background-size:cover;background-position:center;
+      filter:blur(20px) brightness(.62) saturate(1.2) sepia(.18);}
+    .tt-slide-veu{position:absolute;inset:0;background:radial-gradient(75% 85% at 50% 50%,rgba(20,13,7,.12),rgba(14,9,5,.72));}
+    .tt-slide-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;-webkit-user-drag:none;user-select:none;}
+    .tt-slide.in .tt-slide-img{animation:tt-foto-zoom 1.3s var(--saida) both;}
+    @keyframes tt-foto-in{from{opacity:0}to{opacity:1}}
+    @keyframes tt-foto-zoom{from{transform:scale(.965)}to{transform:none}}
+    .tt-ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+      text-align:center;padding:30px;color:var(--creme-2);font-size:15px;line-height:1.5;}
+    .tt-ph .i{font-size:48px;}
+
     /* miniaturas */
-    .tt-thumbs{display:flex;align-items:center;gap:10px;}
-    .tt-arrow{flex:0 0 auto;width:44px;height:44px;border-radius:50%;border:1px solid rgba(226,181,105,.4);
-      background:rgba(20,14,8,.6);color:#e2b569;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
-    .tt-arrow:active{transform:scale(.94);}
-    .tt-thumbstrip{flex:1;display:flex;gap:10px;overflow-x:auto;padding:2px;scrollbar-width:none;}
+    .tt-thumbs{display:flex;align-items:center;gap:10px;min-width:0;}
+    .tt-arrow{flex:0 0 auto;width:52px;height:52px;border-radius:50%;border:1px solid var(--linha-forte);
+      background:rgba(28,20,12,.72);color:var(--ouro);display:grid;place-items:center;cursor:pointer;
+      transition:transform .16s var(--saida),background-color .16s;}
+    .tt-arrow:active{transform:scale(.92);background:rgba(226,181,105,.18);}
+    .tt-thumbstrip{position:relative;flex:1;min-width:0;display:flex;gap:10px;overflow-x:auto;padding:4px 16px;scrollbar-width:none;
+      -webkit-mask-image:linear-gradient(90deg,transparent,#000 16px,#000 calc(100% - 16px),transparent);
+      mask-image:linear-gradient(90deg,transparent,#000 16px,#000 calc(100% - 16px),transparent);}
     .tt-thumbstrip::-webkit-scrollbar{display:none;}
-    .tt-thumb{flex:0 0 auto;width:84px;height:84px;border-radius:14px;overflow:hidden;cursor:pointer;
-      border:2px solid transparent;opacity:.55;transition:opacity .2s,border-color .2s;background:#120d07;}
-    .tt-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
-    .tt-thumb.on{opacity:1;border-color:#e2b569;}
-    /* coluna de conteúdo */
-    .tt-content{flex:1;min-width:0;display:flex;flex-direction:column;gap:18px;}
-    .tt-brand{text-align:center;}
-    .tt-brand-eyebrow{font-size:12px;font-weight:800;letter-spacing:7px;text-transform:uppercase;color:#c99f52;}
-    .tt-brand-name{font-family:'Noto Serif',serif;font-size:50px;font-weight:700;letter-spacing:2px;
-      text-transform:uppercase;color:#f4ead6;line-height:1;margin:6px 0 4px;}
-    .tt-brand-script{display:flex;align-items:center;justify-content:center;gap:14px;}
-    .tt-brand-script::before,.tt-brand-script::after{content:'';height:1px;width:64px;background:rgba(201,159,82,.7);}
-    .tt-brand-script span{font-family:'Parisienne',cursive;font-size:32px;color:#e9cd94;}
-    /* card de curiosidade em destaque */
-    .tt-infocard{position:relative;border-radius:22px;padding:26px 30px;flex:1;min-height:0;display:flex;align-items:center;gap:24px;
-      border:1px solid rgba(226,181,105,.3);overflow:hidden;
-      background:radial-gradient(120% 140% at 0% 0%,rgba(226,181,105,.12),transparent 55%),linear-gradient(150deg,#231a10,#160f08);
-      box-shadow:0 20px 50px rgba(0,0,0,.45);}
-    .tt-info-ic{flex:0 0 auto;width:100px;height:100px;border-radius:50%;border:1px solid rgba(226,181,105,.4);
-      display:flex;align-items:center;justify-content:center;font-size:46px;
-      background:radial-gradient(circle at 50% 30%,rgba(226,181,105,.16),transparent 70%);}
-    .tt-info-body{flex:1;min-width:0;}
-    .tt-info-eyebrow{font-size:16px;font-weight:800;letter-spacing:3px;text-transform:uppercase;color:#e2b569;margin-bottom:12px;line-height:1.25;}
-    .tt-info-tx{font-family:'Noto Serif',serif;font-size:21px;line-height:1.5;color:#efe4cf;}
+    .tt-thumb{position:relative;flex:0 0 auto;width:clamp(56px,5.8vw,76px);aspect-ratio:1;border-radius:16px;overflow:hidden;
+      border:0;padding:0;cursor:pointer;background:#1a120a;opacity:.48;transition:opacity .35s ease;}
+    .tt-thumb img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;}
+    .tt-thumb::after{content:'';position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 0 0 1px rgba(255,236,200,.14);}
+    .tt-thumb.on{opacity:1;}
+    .tt-thumb.on::after{box-shadow:inset 0 0 0 2px var(--ouro);}
+    .tt-thumb-prog{position:absolute;left:9px;right:9px;bottom:8px;height:3px;border-radius:2px;background:rgba(10,6,3,.5);overflow:hidden;z-index:1;}
+    .tt-thumb-prog i{display:block;height:100%;background:var(--ouro-claro);transform-origin:left center;animation:tt-prog linear both;}
+
+    /* curiosidades — o destaque de texto da tela */
+    .tt-info{position:relative;min-height:0;display:flex;flex-direction:column;cursor:pointer;overflow:hidden;
+      border-radius:clamp(20px,2.3vw,30px);padding:clamp(16px,2.6vh,30px) clamp(20px,2.4vw,38px) clamp(16px,2.4vh,26px);
+      background:radial-gradient(110% 90% at 0% 0%,rgba(226,181,105,.14),transparent 55%),linear-gradient(160deg,#271c11,#150e08 72%);
+      box-shadow:0 34px 70px -26px rgba(0,0,0,.7),0 0 0 1px var(--linha);}
+    .tt-info::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;box-shadow:inset 0 1px 0 rgba(255,236,200,.08);}
+    .tt-info-top{display:flex;align-items:center;gap:14px;}
+    .tt-info-ic{flex:0 0 auto;width:clamp(46px,6vh,60px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;
+      font-size:clamp(21px,2.8vh,28px);box-shadow:inset 0 0 0 1px var(--linha-forte);
+      background:radial-gradient(circle at 50% 30%,rgba(226,181,105,.24),rgba(226,181,105,.04) 70%);
+      animation:tt-pop .7s var(--saida) backwards;}
+    @keyframes tt-pop{from{opacity:0;transform:scale(.8)}to{opacity:1;transform:none}}
+    .tt-info-label{flex:1;min-width:0;font:700 clamp(10px,.95vw,12px)/1.3 'Manrope',sans-serif;letter-spacing:.3em;text-transform:uppercase;color:var(--ouro-txt);}
+    .tt-info-count{font:600 14px/1 'Manrope',sans-serif;letter-spacing:.1em;color:var(--creme);font-variant-numeric:tabular-nums;}
+    .tt-info-count span{color:var(--creme-3);}
+    .tt-info-stack{flex:1;min-height:0;display:grid;align-items:center;overflow:hidden;margin:clamp(6px,1.4vh,16px) 0;}
+    .tt-info-item{grid-area:1/1;min-width:0;}
+    .tt-info-item.in{animation:tt-texto-in .85s .2s var(--saida) both;}
+    .tt-info-item.out{animation:tt-texto-out .4s ease both;pointer-events:none;}
+    @keyframes tt-texto-in{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+    @keyframes tt-texto-out{from{opacity:1}to{opacity:0;transform:translateY(-8px)}}
+    .tt-info-tt{font-family:'Noto Serif',serif;font-weight:600;font-size:clamp(22px,min(3.2vw,5.6vh),50px);line-height:1.14;
+      letter-spacing:-.01em;color:var(--creme);text-wrap:balance;}
+    .tt-info-tx{margin-top:clamp(8px,1.6vh,16px);font:400 clamp(15px,min(1.8vw,3.2vh),25px)/1.55 'Manrope',sans-serif;color:var(--creme-2);
+      max-width:52ch;text-wrap:pretty;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;}
+    .tt-info-prog{display:flex;gap:6px;}
+    .tt-info-prog span{flex:1;height:3px;border-radius:2px;background:rgba(244,234,214,.13);overflow:hidden;}
+    .tt-info-prog span.feito{background:rgba(226,181,105,.5);}
+    .tt-info-prog i{display:block;height:100%;background:var(--ouro);transform-origin:left center;animation:tt-prog linear both;}
+
     /* selos de qualidade */
-    .tt-badges{display:flex;gap:12px;}
-    .tt-badge{flex:1;text-align:center;display:flex;flex-direction:column;align-items:center;gap:9px;}
-    .tt-badge-ic{width:56px;height:56px;border-radius:50%;border:1px solid rgba(226,181,105,.35);
-      display:flex;align-items:center;justify-content:center;font-size:23px;
-      background:radial-gradient(circle at 50% 30%,rgba(226,181,105,.12),transparent 70%);}
-    .tt-badge-label{font-size:11.5px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#cbb489;line-height:1.4;}
-    /* CTA dourado */
-    .tt-cta{width:100%;border:none;border-radius:22px;padding:7px;cursor:pointer;
-      background:linear-gradient(135deg,#4a2f0c,#8a5719 30%,#e2b569 75%,#f0d296);
-      box-shadow:0 16px 40px rgba(138,87,25,.5);display:flex;align-items:center;gap:16px;transition:transform .18s;}
-    .tt-cta:active{transform:scale(.99);}
-    .tt-cta-ic{flex:0 0 auto;width:60px;height:60px;border-radius:16px;display:flex;align-items:center;justify-content:center;
-      font-size:26px;margin-left:8px;}
-    .tt-cta-text{flex:1;text-align:left;}
-    .tt-cta-t1{font-family:'Noto Serif',serif;font-size:25px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#1a120a;}
-    .tt-cta-t2{font-size:14px;color:#3a2a15;margin-top:2px;}
-    .tt-cta-arrow{flex:0 0 auto;width:60px;height:60px;border-radius:50%;background:#160f08;color:#e2b569;
-      display:flex;align-items:center;justify-content:center;font-size:24px;margin-right:8px;}
-    /* sair */
-    .tt-exit{position:fixed;top:16px;right:20px;z-index:6;display:flex;align-items:center;gap:8px;
-      background:rgba(20,14,8,.5);border:1px solid rgba(226,181,105,.45);color:#f0e2c6;
-      border-radius:24px;padding:10px 20px;font-family:'Manrope',sans-serif;font-size:14px;font-weight:600;
-      cursor:pointer;transition:background .18s,transform .18s;}
-    .tt-exit:active{transform:scale(.96);background:rgba(20,14,8,.8);}
-    @media (max-width:820px){
-      .tt-main{flex-direction:column;}
-      .tt-photocol{flex:none;max-width:100%;height:44%;}
-      .tt-brand-name{font-size:38px;}
-      .tt-info-ic{width:74px;height:74px;font-size:34px;}
+    .tt-badges{display:flex;align-items:stretch;min-width:0;border-radius:22px;padding:8px 4px;container-type:inline-size;
+      background:rgba(255,236,200,.035);box-shadow:inset 0 0 0 1px var(--linha);}
+    .tt-badge{position:relative;flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:6px clamp(8px,1vw,14px);}
+    .tt-badge+.tt-badge::before{content:'';position:absolute;left:0;top:16%;bottom:16%;width:1px;
+      background:linear-gradient(transparent,rgba(226,181,105,.36),transparent);}
+    .tt-badge-ic{flex:0 0 auto;width:clamp(36px,4.6vh,44px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;font-size:clamp(16px,2.1vh,19px);
+      box-shadow:inset 0 0 0 1px var(--linha-forte);background:radial-gradient(circle at 50% 30%,rgba(226,181,105,.16),transparent 72%);}
+    .tt-badge-label{min-width:0;font:600 clamp(12px,1.08vw,14px)/1.3 'Manrope',sans-serif;color:var(--creme-2);}
+    @container (max-width:660px){
+      .tt-badge{flex-direction:column;justify-content:center;gap:7px;padding:4px 6px;text-align:center;}
+      .tt-badge-ic{width:36px;font-size:16px;}
+      .tt-badge-label{font-size:12.5px;}
     }
-    .tt-idcard{width:100%;max-width:420px;margin:auto;background:rgba(255,253,248,.98);
-      border:1px solid rgba(226,181,105,.35);border-radius:26px;padding:34px 30px;
-      box-shadow:0 40px 90px rgba(0,0,0,.5);color:#241d13;text-align:center;}
-    .tt-idtitle{font-family:'Noto Serif',serif;font-size:27px;font-weight:700;margin:2px 0 6px;}
-    .tt-idsub{font-size:14px;color:#8a7a63;margin-bottom:22px;line-height:1.5;}
-    .tt-input{width:100%;border:none;border-bottom:1.5px solid #e3d8c4;padding:13px 2px;text-align:center;
-      font-family:'Manrope',sans-serif;font-size:20px;color:#241d13;outline:none;background:transparent;
-      transition:border-color .25s;box-sizing:border-box;margin-bottom:18px;}
+
+    /* botão dourado */
+    .tt-cta{position:relative;overflow:hidden;isolation:isolate;display:flex;align-items:center;gap:clamp(12px,1.6vw,20px);width:100%;
+      min-height:clamp(70px,10.5vh,92px);padding:10px 11px 10px clamp(12px,1.4vw,18px);border:0;border-radius:999px;cursor:pointer;text-align:left;
+      background:linear-gradient(100deg,#a8742c 0%,#c38f42 22%,#e2b569 50%,#f3d9a0 74%,#dcb06a 100%);
+      box-shadow:0 20px 46px -14px rgba(196,140,60,.62),inset 0 1px 0 rgba(255,246,222,.6),inset 0 -1px 0 rgba(90,55,15,.35);
+      color:#1c130a;transition:transform .2s var(--saida);}
+    .tt-cta::after{content:'';position:absolute;top:0;bottom:0;left:0;width:26%;z-index:-1;pointer-events:none;
+      background:linear-gradient(100deg,transparent,rgba(255,251,238,.5),transparent);
+      transform:translateX(-130%) skewX(-18deg);animation:tt-brilho 8s 2.5s ease-in-out infinite;}
+    @keyframes tt-brilho{0%{transform:translateX(-130%) skewX(-18deg)}20%,100%{transform:translateX(480%) skewX(-18deg)}}
+    .tt-cta:active{transform:scale(.985);}
+    .tt-cta-ic{flex:0 0 auto;width:clamp(48px,7vh,64px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;
+      color:#2a1c0d;background:rgba(255,248,230,.28);box-shadow:inset 0 0 0 1px rgba(42,28,13,.18);}
+    .tt-cta-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;}
+    .tt-cta-t1{font-family:'Noto Serif',serif;font-weight:700;font-size:clamp(19px,2.1vw,28px);line-height:1.1;letter-spacing:.08em;
+      text-transform:uppercase;color:#1c130a;}
+    .tt-cta-t2{font:500 clamp(13px,1.15vw,15px)/1.35 'Manrope',sans-serif;color:rgba(36,24,10,.8);}
+    .tt-cta-go{flex:0 0 auto;width:clamp(52px,7.6vh,70px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;
+      background:#1a120a;color:var(--ouro-claro);box-shadow:0 8px 18px -6px rgba(26,18,10,.55);}
+    .tt-cta-go svg{animation:tt-cutuca 4s 3s var(--saida) infinite;}
+    @keyframes tt-cutuca{0%,80%,100%{transform:none}87%{transform:translateX(5px)}94%{transform:translateX(-1px)}}
+
+    /* sair / voltar */
+    .tt-exit,.tt-back{position:fixed;top:max(14px,env(safe-area-inset-top));z-index:10;display:flex;align-items:center;gap:8px;height:42px;
+      padding:0 17px 0 13px;border-radius:999px;background:rgba(22,15,9,.74);border:1px solid var(--linha-forte);color:var(--creme-2);
+      font:600 14px/1 'Manrope',sans-serif;cursor:pointer;transition:transform .16s var(--saida),background-color .16s;}
+    .tt-exit{right:max(14px,env(safe-area-inset-right));}
+    .tt-back{left:max(14px,env(safe-area-inset-left));}
+    .tt-exit:active,.tt-back:active{transform:scale(.95);background:rgba(226,181,105,.16);}
+
+    /* tablet em pé: marca, foto, miniaturas, curiosidade, selos e botão em coluna */
+    @media (orientation:portrait){
+      .tt-vitrine{grid-template-columns:minmax(0,1fr);
+        grid-template-rows:auto minmax(0,1.4fr) auto minmax(clamp(220px,25vh,330px),1fr) auto auto;
+        grid-template-areas:"brand" "stage" "thumbs" "info" "badges" "cta";
+        row-gap:clamp(12px,1.6vh,20px);}
+      .tt-brand{padding-top:clamp(6px,1.4vh,18px);}
+      .tt-brand-name{font-size:clamp(28px,6.2vw,60px);}
+      .tt-brand-script span{font-size:clamp(24px,4.2vw,40px);}
+      .tt-info-tt{font-size:clamp(21px,min(4.3vw,3vh),40px);}
+      .tt-info-tx{font-size:clamp(14.5px,min(2.5vw,1.75vh),21px);max-width:none;}
+      .tt-thumb{width:clamp(56px,9vw,80px);}
+      .tt-badge-label{font-size:clamp(12px,1.9vw,15px);}
+      .tt-cta-t1{font-size:clamp(18px,3.4vw,28px);}
+      .tt-cta-t2{font-size:clamp(12.5px,1.9vw,16px);}
+    }
+
+    /* ── identificação: telefone → nome ── */
+    .tt-id{display:flex;align-items:center;justify-content:center;}
+    .tt-id.nome{align-items:flex-start;padding-top:max(11vh,76px);}
+    .tt-idcard{width:100%;max-width:900px;display:grid;column-gap:clamp(24px,3.6vw,52px);text-align:center;
+      grid-template-columns:minmax(0,1fr) minmax(0,.92fr);
+      grid-template-rows:1fr auto auto auto 1fr;
+      grid-template-areas:". pad" "head pad" "tel pad" "go pad" ". pad";
+      padding:clamp(24px,4.4vh,46px) clamp(24px,3.6vw,52px);border-radius:34px;color:#241d13;
+      background:linear-gradient(170deg,#fffdf8,#f6eee0);
+      box-shadow:0 60px 110px -40px rgba(0,0,0,.85),0 0 0 1px rgba(226,181,105,.45);
+      animation:tt-card-in .7s var(--saida) backwards;}
+    .tt-idcard.so{max-width:540px;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto;grid-template-areas:"head" "tel" "go";}
+    @keyframes tt-card-in{from{opacity:0;transform:translateY(22px) scale(.98)}to{opacity:1;transform:none}}
+    .tt-id-head{grid-area:head;}
+    .tt-id-tel{grid-area:tel;}
+    .tt-pad{grid-area:pad;align-self:center;display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(8px,1.4vh,12px);}
+    .tt-go{grid-area:go;}
+    .tt-id-eyebrow{font:700 11px/1.4 'Manrope',sans-serif;letter-spacing:.3em;text-transform:uppercase;color:#a87b35;}
+    .tt-idtitle{font-family:'Noto Serif',serif;font-weight:600;font-size:clamp(28px,3.3vw,40px);line-height:1.1;
+      letter-spacing:-.01em;margin:12px 0 8px;color:#241d13;}
+    .tt-idsub{font:400 16px/1.5 'Manrope',sans-serif;color:#7d6d55;text-wrap:balance;}
+    .tt-tel{margin-top:clamp(18px,3.2vh,30px);padding:10px 4px 14px;border-bottom:1.5px solid #e6dac4;white-space:nowrap;
+      font:600 clamp(28px,3.5vw,40px)/1 'Manrope',sans-serif;letter-spacing:.01em;font-variant-numeric:tabular-nums;color:#241d13;
+      transition:border-color .25s;}
+    .tt-tel.ok{border-bottom-color:#e2b569;}
+    .tt-tel .resto{color:#ddd0b8;}
+    .tt-tel .cursor{display:inline-block;width:2px;height:.92em;margin:0 1px;vertical-align:-.1em;background:#c99f52;animation:tt-pisca 1.1s steps(1) infinite;}
+    @keyframes tt-pisca{50%{opacity:0}}
+    .tt-input{width:100%;margin-top:clamp(18px,3.2vh,30px);border:none;border-bottom:1.5px solid #e6dac4;padding:12px 2px 14px;text-align:center;
+      font:500 24px/1.2 'Manrope',sans-serif;color:#241d13;outline:none;background:transparent;transition:border-color .25s;}
     .tt-input:focus{border-bottom-color:#e2b569;}
-    .tt-err{color:#b23b4e;font-size:13px;margin-bottom:14px;}
-    .tt-back{position:fixed;top:14px;left:14px;background:rgba(255,255,255,.12);border:1px solid rgba(244,234,214,.25);
-      color:#f4ead6;border-radius:20px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;z-index:5;}
+    .tt-input::placeholder{color:#cdbfa6;}
+    .tt-err{color:#b23b4e;font-size:14px;font-weight:500;line-height:1.4;margin-top:10px;}
+    .tt-key{height:clamp(56px,9vh,78px);border-radius:20px;border:0;cursor:pointer;display:grid;place-items:center;
+      background:#f3eadb;box-shadow:inset 0 0 0 1px rgba(138,87,25,.13),0 1px 0 rgba(255,255,255,.9);
+      font:600 clamp(24px,3.4vh,31px)/1 'Manrope',sans-serif;color:#241d13;font-variant-numeric:tabular-nums;
+      transition:transform .12s var(--saida),background-color .12s;}
+    .tt-key:active{transform:scale(.94);background:#ecd6a8;}
+    .tt-key.aux{background:transparent;box-shadow:none;color:#8a7a63;font-size:15px;font-weight:600;letter-spacing:.02em;}
+    .tt-key.aux:active{background:#f1e6d2;}
+    .tt-go{margin-top:clamp(18px,3vh,26px);width:100%;height:clamp(56px,7.6vh,66px);border:0;border-radius:999px;cursor:pointer;
+      display:flex;align-items:center;justify-content:center;gap:10px;
+      background:linear-gradient(100deg,#b8823a,#e2b569 55%,#f3d9a0);color:#1c130a;font:700 17px/1 'Manrope',sans-serif;letter-spacing:.03em;
+      box-shadow:0 16px 32px -12px rgba(176,122,46,.7),inset 0 1px 0 rgba(255,246,222,.6);transition:transform .16s var(--saida),opacity .2s;}
+    .tt-go:active{transform:scale(.98);}
+    .tt-go:disabled{opacity:.6;cursor:default;}
+    @media (orientation:portrait){
+      .tt-idcard{max-width:560px;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto auto;
+        grid-template-areas:"head" "tel" "pad" "go";}
+      .tt-pad{margin-top:clamp(18px,2.6vh,28px);}
+    }
+
+    @media (prefers-reduced-motion:reduce){
+      .tt-in,.tt-info-ic,.tt-slide.in .tt-slide-img,.tt-cta::after,.tt-cta-go svg,.tt-idcard{animation:none!important;}
+      .tt-slide.in{animation-duration:.6s;}
+      .tt-info-item.in{animation:tt-foto-in .5s ease both;}
+      .tt-info-item.out{animation:none;opacity:0;}
+    }
   `
 
   // ── Tela de identificação (telefone → nome) ──
   if(view==='id'){
+    const tel=mascaraTel(phone)
+    const telOk=phone.length>=10
     return(
       <>
         <style>{G}</style>
         <style>{TOTEM_CSS}</style>
-        <div className="tt-wrap">
-          <button className="tt-back" onClick={voltarTotem}>← Voltar</button>
-          <div className="tt-idcard">
-            <div className="tt-eyebrow">{salonName}</div>
-            <div className="tt-idtitle">{idView==='phone'?'Vamos agendar':'Seja bem-vinda! 💛'}</div>
-            <div className="tt-idsub">{idView==='phone'?'Informe seu telefone para começar':'É seu primeiro agendamento por aqui. Como podemos te chamar?'}</div>
-            {idView==='phone'?(
-              <input className="tt-input" inputMode="tel" autoFocus placeholder="(41) 90000-0000"
-                value={phone} onChange={e=>{setPhone(e.target.value);setErr('')}}
-                onKeyDown={e=>e.key==='Enter'&&identificar()}/>
-            ):(
-              <input className="tt-input" autoFocus placeholder="Seu nome"
-                value={nome} onChange={e=>{setNome(e.target.value);setErr('')}}
-                onKeyDown={e=>e.key==='Enter'&&cadastrar()}/>
+        <div className={'tt-wrap tt-id'+(idView==='nome'?' nome':'')}>
+          <button className="tt-back" onClick={idView==='nome'?()=>{setErr('');setIdView('phone')}:voltarTotem}>
+            <TtIco.seta esq/> Voltar
+          </button>
+          <div className={'tt-idcard'+(idView==='nome'?' so':'')} key={idView}>
+            <div className="tt-id-head">
+              <div className="tt-id-eyebrow">{salonName}</div>
+              <div className="tt-idtitle">{idView==='phone'?'Vamos agendar':'Seja bem-vinda! 💛'}</div>
+              <div className="tt-idsub">{idView==='phone'?'Informe seu telefone para começar':'É seu primeiro agendamento por aqui. Como podemos te chamar?'}</div>
+            </div>
+            <div className="tt-id-tel">
+              {idView==='phone'?(
+                <div className={'tt-tel'+(telOk?' ok':'')} role="status" aria-label={'Telefone: '+(tel.feito||'vazio')}>
+                  {tel.feito}<span className="cursor"/><span className="resto">{tel.resto}</span>
+                </div>
+              ):(
+                <input className="tt-input" autoFocus placeholder="Seu nome" autoComplete="off" enterKeyHint="go"
+                  value={nome} onChange={e=>{setNome(e.target.value);setErr('')}}
+                  onKeyDown={e=>e.key==='Enter'&&cadastrar()}/>
+              )}
+              {err&&<div className="tt-err" role="alert">{err}</div>}
+            </div>
+            {idView==='phone'&&(
+              <div className="tt-pad">
+                {['1','2','3','4','5','6','7','8','9'].map(k=>(
+                  <button key={k} className="tt-key" onClick={()=>tecla(k)}>{k}</button>
+                ))}
+                <button className="tt-key aux" onClick={()=>tecla('limpar')}>Limpar</button>
+                <button className="tt-key" onClick={()=>tecla('0')}>0</button>
+                <button className="tt-key aux" onClick={()=>tecla('del')} aria-label="Apagar"><TtIco.apagar/></button>
+              </div>
             )}
-            {err&&<div className="tt-err">{err}</div>}
-            <button className="tt-cta" onClick={idView==='phone'?identificar:cadastrar} disabled={loading}>
-              <span className="c1">{loading?'Aguarde…':(idView==='phone'?'Continuar':'Começar a agendar')}</span>
+            <button className="tt-go" onClick={idView==='phone'?identificar:cadastrar} disabled={loading}>
+              {loading?'Aguarde…':(idView==='phone'?'Continuar':'Começar a agendar')}
+              {!loading&&<TtIco.seta/>}
             </button>
           </div>
         </div>
@@ -4581,82 +4792,118 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
 
   // ── Vitrine do totem ──
   const bAtual=nBanners?banners[bCur]:null
+  const bAnt=bPrev!=null?banners[bPrev]:null
   // separa "Morgane Faoli" (principal) de "Nail Designer/Style" (descritor)
   const _bm=salonName.match(/^(.*?)\s+(nail\s+\S+)\s*$/i)
   const brandMain=_bm?_bm[1]:salonName
   const brandSub=_bm?_bm[2]:''
+  const slide=(i,saindo)=>(
+    <div key={'s'+i} className={'tt-slide '+(saindo?'out':'in')}
+      onAnimationEnd={saindo?undefined:e=>{if(e.target===e.currentTarget)setFoto(s=>s.prev==null?s:{...s,prev:null})}}>
+      <div className="tt-slide-bg" style={{backgroundImage:`url("${fotos[i].url}")`}}/>
+      <div className="tt-slide-veu"/>
+      <img className="tt-slide-img" src={fotos[i].url} alt="" draggable={false}/>
+    </div>
+  )
   return(
     <>
       <style>{G}</style>
       <style>{TOTEM_CSS}</style>
-      <div className="tt-wrap">
-        <button className="tt-exit" aria-label="Sair do totem" onClick={()=>{if(window.confirm('Sair do modo totem?'))onExit()}}>👤 Sair</button>
+      <div className="tt-wrap tt-vitrine">
+        <button className="tt-exit" aria-label="Sair do totem" onClick={()=>{if(window.confirm('Sair do modo totem?'))onExit()}}>
+          <TtIco.sair/> Sair
+        </button>
 
-        <div className="tt-main">
-          {/* ESQUERDA — foto em destaque + miniaturas (carrossel automático) */}
-          <div className="tt-photocol">
-            <div className="tt-featured">
-              {nFotos>0?fotos.map((f,i)=>(
-                <div key={f.path||i} className={'tt-slide'+(i===fCur?' on':'')}>
-                  <div className="tt-foto-bg" style={{backgroundImage:`url(${f.url})`}}/>
-                  <img src={f.url} alt=""/>
-                </div>
-              )):(
-                <div className="tt-ph"><div className="i">💅</div><div>Adicione fotos no painel para exibir aqui.</div></div>
-              )}
+        <header className="tt-brand tt-in" style={{'--d':'.05s'}}>
+          <div className="tt-brand-eyebrow">Bem-vinda ao</div>
+          <div className="tt-brand-name">{brandMain}</div>
+          {brandSub&&<div className="tt-brand-script"><span>{brandSub}</span></div>}
+        </header>
+
+        {/* foto em destaque — carrossel automático; toque ou arraste para trocar */}
+        <section className="tt-stage tt-in" aria-label="Fotos dos trabalhos"
+          onPointerDown={e=>{toque.current={x:e.clientX,y:e.clientY}}}
+          onPointerUp={e=>{
+            const t=toque.current;toque.current=null;if(!t)return
+            const dx=e.clientX-t.x,dy=e.clientY-t.y
+            if(Math.abs(dx)>40&&Math.abs(dx)>Math.abs(dy))irFoto(dx<0?1:-1)
+            else if(Math.abs(dx)<10&&Math.abs(dy)<10)irFoto(1)
+          }}
+          onPointerCancel={()=>{toque.current=null}}>
+          {nFotos>0?<>
+            {fPrev!=null&&slide(fPrev,true)}
+            {slide(fCur,false)}
+          </>:(
+            <div className="tt-ph"><div className="i">💅</div><div>Adicione fotos no painel para exibir aqui.</div></div>
+          )}
+        </section>
+
+        {nFotos>1&&(
+          <div className="tt-thumbs tt-in" style={{'--d':'.2s'}}>
+            <button className="tt-arrow" onClick={()=>irFoto(-1)} aria-label="Anterior"><TtIco.seta esq/></button>
+            <div className="tt-thumbstrip" ref={stripRef}>
+              {fotos.map((f,i)=>(
+                <button key={f.path||i} className={'tt-thumb'+(i===fCur?' on':'')} onClick={()=>fotoEm(i)} aria-label={'Foto '+(i+1)}>
+                  <img src={f.url} alt="" draggable={false}/>
+                  {i===fCur&&<span className="tt-thumb-prog"><i key={foto.n+'-'+durFoto} style={{animationDuration:durFoto+'ms'}}/></span>}
+                </button>
+              ))}
             </div>
-            {nFotos>1&&(
-              <div className="tt-thumbs">
-                <button className="tt-arrow" onClick={fotoPrev} aria-label="Anterior">‹</button>
-                <div className="tt-thumbstrip">
-                  {fotos.map((f,i)=>(
-                    <div key={f.path||i} className={'tt-thumb'+(i===fCur?' on':'')} onClick={()=>setFIdx(i)}>
-                      <img src={f.url} alt=""/>
-                    </div>
-                  ))}
-                </div>
-                <button className="tt-arrow" onClick={fotoNext} aria-label="Próxima">›</button>
+            <button className="tt-arrow" onClick={()=>irFoto(1)} aria-label="Próxima"><TtIco.seta/></button>
+          </div>
+        )}
+
+        {/* curiosidades — carrossel automático; toque para a próxima */}
+        <section className="tt-info tt-in" style={{'--d':'.12s'}} role="button" tabIndex={0} aria-label="Próxima curiosidade"
+          onClick={()=>irInfo(1)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();irInfo(1)}}}>
+          <div className="tt-info-top">
+            <div className="tt-info-ic" key={'ic'+bCur}>{bAtual?bAtual.ic:'💛'}</div>
+            <div className="tt-info-label">Dicas & curiosidades</div>
+            {nBanners>1&&<div className="tt-info-count">{dois(bCur+1)} <span>/ {dois(nBanners)}</span></div>}
+          </div>
+          <div className="tt-info-stack">
+            {bAnt&&(
+              <div key={'b'+bPrev} className="tt-info-item out" aria-hidden="true">
+                <div className="tt-info-tt">{bAnt.titulo}</div>
+                <div className="tt-info-tx">{bAnt.texto}</div>
               </div>
             )}
-          </div>
-
-          {/* DIREITA — marca + curiosidade em destaque (carrossel automático) + selos */}
-          <div className="tt-content">
-            <div className="tt-brand">
-              <div className="tt-brand-eyebrow">Bem-vinda ao</div>
-              <div className="tt-brand-name">{brandMain}</div>
-              {brandSub&&<div className="tt-brand-script"><span>{brandSub}</span></div>}
+            <div key={'b'+bCur} className="tt-info-item in"
+              onAnimationEnd={e=>{if(e.target===e.currentTarget)setInfo(s=>s.prev==null?s:{...s,prev:null})}}>
+              <div className="tt-info-tt">{bAtual?bAtual.titulo:'Dicas e cuidados'}</div>
+              <div className="tt-info-tx">{bAtual?bAtual.texto:'Crie banners no painel para aparecerem aqui.'}</div>
             </div>
-
-            <div className="tt-infocard">
-              <div className="tt-info-ic">{bAtual?bAtual.ic:'💛'}</div>
-              <div className="tt-info-body" key={bCur} style={{animation:'ttfade .6s ease'}}>
-                <div className="tt-info-eyebrow">{bAtual?bAtual.titulo:'Dicas e cuidados'}</div>
-                <div className="tt-info-tx">{bAtual?bAtual.texto:'Crie banners no painel para aparecerem aqui.'}</div>
-              </div>
-            </div>
-
-            {destaques.length>0&&(
-              <div className="tt-badges">
-                {destaques.slice(0,4).map((d,i)=>(
-                  <div key={i} className="tt-badge">
-                    <div className="tt-badge-ic">{d.ic}</div>
-                    <div className="tt-badge-label">{d.titulo||d.txt}</div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
-        </div>
+          {nBanners>1&&(
+            <div className="tt-info-prog" aria-hidden="true">
+              {banners.map((_,i)=>(
+                <span key={i} className={i<bCur?'feito':''}>
+                  {i===bCur&&<i key={info.n+'-'+durInfo} style={{animationDuration:durInfo+'ms'}}/>}
+                </span>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {destaques.length>0&&(
+          <div className="tt-badges tt-in" style={{'--d':'.24s'}}>
+            {destaques.slice(0,4).map((d,i)=>(
+              <div key={i} className="tt-badge">
+                <div className="tt-badge-ic">{d.ic}</div>
+                <div className="tt-badge-label">{d.titulo||d.txt}</div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* CTA dourado */}
-        <button className="tt-cta" onClick={abrirAgendar}>
-          <div className="tt-cta-ic">📅</div>
-          <div className="tt-cta-text">
-            <div className="tt-cta-t1">{cfg.cta?.titulo||'Agende seu horário'}</div>
-            {(cfg.cta?.texto)&&<div className="tt-cta-t2">{cfg.cta.texto}</div>}
-          </div>
-          <div className="tt-cta-arrow">›</div>
+        <button className="tt-cta tt-in" style={{'--d':'.32s'}} onClick={abrirAgendar}>
+          <span className="tt-cta-ic"><TtIco.cal/></span>
+          <span className="tt-cta-text">
+            <span className="tt-cta-t1">{cfg.cta?.titulo||'Agende seu horário'}</span>
+            {(cfg.cta?.texto)&&<span className="tt-cta-t2">{cfg.cta.texto}</span>}
+          </span>
+          <span className="tt-cta-go"><TtIco.seta/></span>
         </button>
       </div>
     </>
