@@ -13,6 +13,11 @@ async function execQuery(state) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(state),
     })
+    // sessão expirada/inválida no meio do uso → recarrega e cai no login
+    if (res.status === 401 && typeof window !== 'undefined' && window.__salaoSessao) {
+      window.__salaoSessao = false
+      window.location.reload()
+    }
     const j = await res.json()
     return {
       data: j.ok ? (j.data ?? empty) : empty,
@@ -444,7 +449,7 @@ const Badge = ({tipo})=>
 // ══════════════════════════════════════════════════════
 // LOGIN
 // ══════════════════════════════════════════════════════
-function Login({onAdmin,onProf,onCliente,onMesa,salonName='Morgane Faoli Nail Style'}){
+function Login({onLogin,salonName='Morgane Faoli Nail Style'}){
   const [u,setU]=useState('')
   const [p,setP]=useState('')
   const [showP,setShowP]=useState(false)
@@ -460,10 +465,7 @@ function Login({onAdmin,onProf,onCliente,onMesa,salonName='Morgane Faoli Nail St
       const json=await res.json()
       setLd(false)
       if(!json.ok){setErr(json.erro||'Usuário ou senha incorretos');return}
-      if(json.perfil==='admin'){onAdmin(json.nome||json.dados?.full_name||'Administrador');return}
-      if(json.perfil==='mesa'){onMesa&&onMesa();return}
-      if(json.perfil==='profissional'){onProf(json.dados);return}
-      if(json.perfil==='cliente'){onCliente(json.dados);return}
+      onLogin(json)
     }catch(e){setLd(false);setErr('Erro de conexão. Tente novamente.')}
   }
 
@@ -2668,7 +2670,7 @@ function ProfPanel({prof,onLogout,salonName='Morgane Faoli Nail Style'}){
                 <Lbl c="Senha atual *"/>
                 <input type="password" value={senhaAtual} onChange={e=>{setSenhaAtual(e.target.value);setSenhaErr('');setSenhaOk('')}} placeholder="Senha atual" className="inp"/>
                 <Lbl c="Nova senha *"/>
-                <input type="password" value={senhaNova} onChange={e=>{setSenhaNova(e.target.value);setSenhaErr('');setSenhaOk('')}} placeholder="Mínimo 4 caracteres" className="inp"/>
+                <input type="password" value={senhaNova} onChange={e=>{setSenhaNova(e.target.value);setSenhaErr('');setSenhaOk('')}} placeholder="Mínimo 6 caracteres" className="inp"/>
                 <Lbl c="Confirmar nova senha *"/>
                 <input type="password" value={senhaConf} onChange={e=>{setSenhaConf(e.target.value);setSenhaErr('');setSenhaOk('')}} placeholder="Repita a nova senha" className="inp"/>
                 {senhaErr&&<Alert type="danger" c={senhaErr}/>}
@@ -3797,7 +3799,7 @@ function MesaAdmin({toast2,onMesa}){
   },[])
 
   async function salvarSenhaTotem(){
-    if(pwTotem.length<6){toast2('A senha do totem precisa de ao menos 6 caracteres.',false);return}
+    if(pwTotem.length<8){toast2('A senha do totem precisa de ao menos 8 caracteres.',false);return}
     if(!pwAdmin){toast2('Digite sua senha de administrador para confirmar.',false);return}
     setPwSaving(true)
     try{
@@ -3893,7 +3895,7 @@ function MesaAdmin({toast2,onMesa}){
           <label className="lbl">Sua senha de administrador (para confirmar)</label>
           <input className="inp" type="password" value={pwAdmin} onChange={e=>setPwAdmin(e.target.value)} placeholder="Senha do admin"/>
           <label className="lbl">Nova senha do totem</label>
-          <input className="inp" type="password" value={pwTotem} onChange={e=>setPwTotem(e.target.value)} placeholder="Mínimo 6 caracteres"/>
+          <input className="inp" type="password" value={pwTotem} onChange={e=>setPwTotem(e.target.value)} placeholder="Mínimo 8 caracteres"/>
           <button onClick={salvarSenhaTotem} disabled={pwSaving} className="btn btn-primary" style={{justifyContent:'center',padding:'12px 18px',fontSize:13,marginTop:12,opacity:pwSaving?.6:1,cursor:pwSaving?'not-allowed':'pointer'}}>
             {pwSaving?'Salvando…':'Definir senha do totem'}
           </button>
@@ -4051,11 +4053,15 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[view])
 
-  function voltarTotem(){setView('display');setIdView('phone');setPhone('');setNome('');setCli(null);setErr('')}
+  function voltarTotem(){
+    // encerra no servidor a sessão curta da cliente identificada
+    fetch('/api/mesa-cliente',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'sair'})}).catch(()=>{})
+    setView('display');setIdView('phone');setPhone('');setNome('');setCli(null);setErr('')
+  }
   function abrirAgendar(){setErr('');setPhone('');setNome('');setIdView('phone');setView('id')}
 
   async function identificar(){
-    if(phone.replace(/\D/g,'').length<8){setErr('Informe um telefone válido, com DDD.');return}
+    if(phone.replace(/\D/g,'').length<10){setErr('Informe um telefone válido, com DDD.');return}
     setLoading(true);setErr('')
     try{
       const res=await fetch('/api/mesa-cliente',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone})})
@@ -4312,7 +4318,7 @@ function AdminSenhaComp({toast2}){
   async function salvar(){
     setErr('');setOk('')
     if(!senhaAtual){setErr('Informe a senha atual');return}
-    if(!senhaNova||senhaNova.length<6){setErr('Nova senha deve ter pelo menos 6 caracteres');return}
+    if(!senhaNova||senhaNova.length<8){setErr('Nova senha deve ter pelo menos 8 caracteres');return}
     if(senhaNova!==senhaConf){setErr('As senhas não coincidem');return}
     try{
       const res=await fetch('/api/alterar-senha',{
@@ -4333,7 +4339,7 @@ function AdminSenhaComp({toast2}){
       <label className="lbl">Senha atual *</label>
       <input type="password" value={senhaAtual} onChange={e=>{setSenhaAtual(e.target.value);setErr('');setOk('')}} placeholder="Senha atual" className="inp"/>
       <label className="lbl">Nova senha *</label>
-      <input type="password" value={senhaNova} onChange={e=>{setSenhaNova(e.target.value);setErr('');setOk('')}} placeholder="Mínimo 4 caracteres" className="inp"/>
+      <input type="password" value={senhaNova} onChange={e=>{setSenhaNova(e.target.value);setErr('');setOk('')}} placeholder="Mínimo 8 caracteres" className="inp"/>
       <label className="lbl">Confirmar nova senha *</label>
       <input type="password" value={senhaConf} onChange={e=>{setSenhaConf(e.target.value);setErr('');setOk('')}} onKeyDown={e=>e.key==='Enter'&&salvar()} placeholder="Repita a nova senha" className="inp"/>
       {err&&<div className="alert alert-danger" style={{marginTop:10}}>{err}</div>}
@@ -4349,6 +4355,53 @@ function AdminSenhaComp({toast2}){
 // ══════════════════════════════════════════════════════
 // ROOT — login unificado
 // ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+// TROCA DE SENHA OBRIGATÓRIA (admin entrou com senha fraca)
+// ══════════════════════════════════════════════════════
+function TrocaSenhaObrigatoria({nome,onDone,onLogout}){
+  const [nova,setNova]=useState('')
+  const [conf,setConf]=useState('')
+  const [err,setErr]=useState('')
+  const [ld,setLd]=useState(false)
+
+  async function salvar(){
+    setErr('')
+    if(nova.length<8){setErr('A nova senha precisa ter pelo menos 8 caracteres.');return}
+    if(nova!==conf){setErr('As senhas não coincidem.');return}
+    setLd(true)
+    try{
+      const res=await fetch('/api/alterar-senha',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tipo:'obrigatoria',senhaNova:nova})})
+      const j=await res.json()
+      setLd(false)
+      if(!j.ok){setErr(j.erro||'Não consegui salvar. Tente novamente.');return}
+      onDone()
+    }catch{setLd(false);setErr('Erro de conexão. Tente novamente.')}
+  }
+
+  const inp={width:'100%',border:'none',borderBottom:'1.5px solid #e3d8c4',padding:'12px 2px',fontSize:15,color:'#241d13',outline:'none',background:'transparent',boxSizing:'border-box',marginBottom:18,fontFamily:'Manrope,sans-serif'}
+  return(
+    <>
+      <style>{G}</style>
+      <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',padding:20,background:'radial-gradient(120% 90% at 100% 0%,rgba(226,181,105,.22),transparent 55%),linear-gradient(160deg,#2b2013 0%,#1a130b 55%,#120d07 100%)'}}>
+        <div style={{width:'100%',maxWidth:420,background:'rgba(255,253,248,.98)',borderRadius:26,padding:'34px 32px',boxShadow:'0 40px 90px rgba(0,0,0,.5)',border:'1px solid rgba(226,181,105,.35)'}}>
+          <div style={{fontSize:30,textAlign:'center',marginBottom:6}}>🔐</div>
+          <div style={{fontFamily:'Noto Serif,serif',fontSize:24,fontWeight:700,color:'#241d13',textAlign:'center',marginBottom:8}}>Defina uma nova senha</div>
+          <div style={{fontSize:13,color:'#8a7a63',textAlign:'center',lineHeight:1.6,marginBottom:24}}>
+            Olá, {nome}. Por segurança, sua senha atual é fraca demais para acessar o painel. Escolha uma nova com <b>pelo menos 8 caracteres</b> e evite sequências como 123456.
+          </div>
+          <input type="password" value={nova} onChange={e=>{setNova(e.target.value);setErr('')}} placeholder="Nova senha" style={inp} autoComplete="new-password"/>
+          <input type="password" value={conf} onChange={e=>{setConf(e.target.value);setErr('')}} onKeyDown={e=>e.key==='Enter'&&salvar()} placeholder="Repita a nova senha" style={inp} autoComplete="new-password"/>
+          {err&&<Alert type="danger" c={err}/>}
+          <button onClick={salvar} disabled={ld} className="btn btn-primary" style={{width:'100%',justifyContent:'center',padding:14,fontSize:13,marginTop:6,opacity:ld?.6:1}}>
+            {ld?'Salvando…':'Salvar e entrar'}
+          </button>
+          <button onClick={onLogout} style={{width:'100%',marginTop:12,background:'none',border:'none',color:'#a9793a',fontSize:13,cursor:'pointer'}}>Sair</button>
+        </div>
+      </div>
+    </>
+  )
+}
+
 export default function App(){
   const [salonName,setSalonName]=useState('Morgane Faoli Nail Style')
   // Carregar nome do salão só no cliente (localStorage não existe no servidor)
@@ -4392,63 +4445,59 @@ export default function App(){
     })()
   },[])
 
-  // Restaura sessão do localStorage ao carregar
-  const [mode,setMode]=useState(()=>{
-    try{ return localStorage.getItem('salao_mode')||null }catch{return null}
-  })
-  const [profData,setProfData]=useState(()=>{
-    try{
-      const d=localStorage.getItem('salao_prof')
-      return d?JSON.parse(d):null
-    }catch{return null}
-  })
-  const [cliData,setCliData]=useState(()=>{
-    try{
-      const d=localStorage.getItem('salao_cli')
-      return d?JSON.parse(d):null
-    }catch{return null}
-  })
-  const [adminName,setAdminName]=useState(()=>{
-    try{ return localStorage.getItem('salao_admin_nome')||'Administrador' }catch{return 'Administrador'}
-  })
+  // ── Sessão: quem decide quem está logado é o SERVIDOR (cookie assinado) ──
+  // O navegador só pergunta; mexer no localStorage não dá acesso a nada.
+  const [carregando,setCarregando]=useState(true)
+  const [mode,setMode]=useState(null)
+  const [profData,setProfData]=useState(null)
+  const [cliData,setCliData]=useState(null)
+  const [adminName,setAdminName]=useState('Administrador')
+  const [trocarSenha,setTrocarSenha]=useState(false)
 
-  function loginAdmin(nome){
-    const nomeAdmin=(nome||'Administrador').trim()
-    localStorage.setItem('salao_mode','admin')
-    localStorage.setItem('salao_admin_nome',nomeAdmin)
-    localStorage.removeItem('salao_prof')
-    localStorage.removeItem('salao_cli')
-    setAdminName(nomeAdmin);setMode('admin')
-  }
-  function loginProf(p){
-    localStorage.setItem('salao_mode','prof')
-    localStorage.setItem('salao_prof',JSON.stringify(p))
-    localStorage.removeItem('salao_cli')
-    setProfData(p);setMode('prof')
-  }
-  function loginCli(c){
-    localStorage.setItem('salao_mode','cliente')
-    localStorage.setItem('salao_cli',JSON.stringify(c))
-    localStorage.removeItem('salao_prof')
-    setCliData(c);setMode('cliente')
-  }
-  function enterMesa(){
-    localStorage.setItem('salao_mode','mesa')
-    localStorage.removeItem('salao_prof')
-    localStorage.removeItem('salao_cli')
-    setMode('mesa')
-  }
-  function logout(){
-    localStorage.removeItem('salao_mode')
-    localStorage.removeItem('salao_prof')
-    localStorage.removeItem('salao_cli')
-    localStorage.removeItem('salao_admin_nome')
-    setMode(null);setProfData(null);setCliData(null)
+  function aplicarSessao(j){
+    setProfData(null);setCliData(null);setTrocarSenha(false)
+    if(!j||!j.ok){setMode(null);return}
+    if(j.perfil==='admin'){setAdminName(j.nome||'Administrador');setTrocarSenha(!!j.trocarSenha);setMode('admin')}
+    else if(j.perfil==='profissional'&&j.dados){setProfData(j.dados);setMode('prof')}
+    else if(j.perfil==='cliente'&&j.dados){setCliData(j.dados);setMode('cliente')}
+    else if(j.perfil==='mesa')setMode('mesa')
+    else setMode(null)
   }
 
+  useEffect(()=>{
+    // restos da versão antiga, que guardava dados (e até senha) no navegador
+    try{['salao_mode','salao_prof','salao_cli','salao_admin_nome'].forEach(k=>localStorage.removeItem(k))}catch{}
+    fetch('/api/session',{cache:'no-store'})
+      .then(r=>r.json()).then(aplicarSessao).catch(()=>aplicarSessao(null))
+      .finally(()=>setCarregando(false))
+  },[])
+
+  // se a sessão expirar no meio do uso, o próximo pedido recebe 401 e o app volta ao login
+  useEffect(()=>{ if(typeof window!=='undefined')window.__salaoSessao=!!mode },[mode])
+
+  async function enterMesa(){
+    try{
+      const r=await fetch('/api/session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'mesa'})})
+      const j=await r.json()
+      if(j.ok){setProfData(null);setCliData(null);setMode('mesa')}
+      else alert(j.erro||'Não foi possível abrir o totem')
+    }catch{alert('Erro de conexão. Tente novamente.')}
+  }
+  async function logout(){
+    try{await fetch('/api/logout',{method:'POST'})}catch{}
+    setMode(null);setProfData(null);setCliData(null);setTrocarSenha(false)
+  }
+
+  if(carregando) return(
+    <>
+      <style>{G}</style>
+      <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(160deg,#2b2013 0%,#1a130b 55%,#120d07 100%)',color:'#e2b569',fontSize:11,fontWeight:700,letterSpacing:5,textTransform:'uppercase'}}>Carregando…</div>
+    </>
+  )
+  if(mode==='admin'&&trocarSenha) return <TrocaSenhaObrigatoria nome={adminName} onDone={()=>setTrocarSenha(false)} onLogout={logout}/>
   if(mode==='mesa')    return <Mesa onExit={logout} salonName={salonName}/>
   if(mode==='admin')   return <Admin onLogout={logout} onMesa={enterMesa} salonName={salonName} adminName={adminName}/>
   if(mode==='prof'&&profData)   return <ProfPanel prof={profData} onLogout={logout}/>
   if(mode==='cliente'&&cliData) return <PortalCliente cliente={cliData} onLogout={logout} salonName={salonName}/>
-  return <Login onAdmin={loginAdmin} onProf={loginProf} onCliente={loginCli} onMesa={enterMesa} salonName={salonName}/>
+  return <Login onLogin={aplicarSessao} salonName={salonName}/>
 }

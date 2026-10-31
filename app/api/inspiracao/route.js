@@ -1,8 +1,12 @@
+import { getSessao, json } from '../../../lib/session.js'
+
 export async function POST(req){
+  const s=getSessao(req)
+  if(!s||s.mc)return json({ok:false,erro:'Faça login para usar a inspiração'},{status:401})
   let descricao='elegant nails'
   try{
     const body=await req.json()
-    descricao=body.descricao||descricao
+    descricao=String(body.descricao||descricao).slice(0,200)
 
     const prompt=`professional nail art close-up photo, ${descricao}, perfectly manicured nails, studio lighting, sharp focus, high resolution, neutral background, beauty photography`
 
