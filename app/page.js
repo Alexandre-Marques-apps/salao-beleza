@@ -260,6 +260,10 @@ const G = `
 }
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
 html,body{font-family:'Manrope',sans-serif;background:${T.surface};color:${T.onSurface};min-height:100vh;-webkit-font-smoothing:antialiased;overflow-x:hidden;}
+/* Toque com cara de app: sem flash cinza, sem atraso de 300ms, sem selecionar texto de botão */
+html{-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%;}
+button,a,[role="button"]{touch-action:manipulation;-webkit-user-select:none;user-select:none;}
+body{padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px);}
 /* Ambiente: leve luz dourada nos cantos, como iluminação de salão */
 body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
   background:
@@ -2984,6 +2988,92 @@ function FotoReferencia({onFoto}){
 // ══════════════════════════════════════════════════════
 // PORTAL DO CLIENTE
 // ══════════════════════════════════════════════════════
+// Foto da Morgane (public/morgane.jpg) — aparece no topo do portal e no card dela
+const FOTO_MORGANE='/morgane.jpg'
+const fotoDaProfissional=nome=>/morgane/i.test(nome||'')?FOTO_MORGANE:null
+
+// "31/10/2026" → Date local ao meio-dia (evita pular de dia por fuso)
+function dmyParaData(dmy){const[d,m,y]=(dmy||'').split('/').map(Number);return new Date(y||2000,(m||1)-1,d||1,12)}
+function dataLonga(dmy){const s=dmyParaData(dmy).toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});return s.charAt(0).toUpperCase()+s.slice(1)}
+function dataCurta(dmy){return dmyParaData(dmy).toLocaleDateString('pt-BR',{day:'2-digit',month:'short'}).replace('.','')}
+const mesCurto=dmy=>dmyParaData(dmy).toLocaleDateString('pt-BR',{month:'short'}).replace('.','')
+
+// resistência progressiva ao puxar além do limite (rubber-band)
+const elastico=(x,d=220,c=0.55)=>(x*d*c)/(d+c*Math.abs(x))
+const reduzMovimento=()=>typeof window!=='undefined'&&!!window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+// ══════════════════════════════════════════════════════
+// FOLHA INFERIOR (bottom sheet) — entra e sai pelo mesmo caminho, segue o
+// dedo 1:1, resiste ao puxar para cima e fecha com um "peteleco" para baixo
+// ══════════════════════════════════════════════════════
+function FolhaInferior({aberta,onFechar,titulo,children}){
+  const [montada,setMontada]=useState(aberta)
+  const [visivel,setVisivel]=useState(false)
+  const folhaRef=useRef(null),veuRef=useRef(null),arrasto=useRef(null)
+  const fecharRef=useRef(onFechar)
+  fecharRef.current=onFechar
+
+  useEffect(()=>{
+    if(aberta){
+      setMontada(true)
+      let id2=0
+      const id1=requestAnimationFrame(()=>{id2=requestAnimationFrame(()=>setVisivel(true))})
+      return()=>{cancelAnimationFrame(id1);cancelAnimationFrame(id2)}
+    }
+    setVisivel(false)
+    const t=setTimeout(()=>setMontada(false),460)
+    return()=>clearTimeout(t)
+  },[aberta])
+
+  useEffect(()=>{
+    if(!aberta)return
+    const ant=document.body.style.overflow
+    document.body.style.overflow='hidden'
+    const tecla=e=>{if(e.key==='Escape')fecharRef.current()}
+    window.addEventListener('keydown',tecla)
+    return()=>{document.body.style.overflow=ant;window.removeEventListener('keydown',tecla)}
+  },[aberta])
+
+  function aoTocar(e){
+    if(e.pointerType==='mouse'&&e.button!==0)return
+    arrasto.current={y0:e.clientY,dy:0,hist:[{y:e.clientY,t:performance.now()}]}
+    e.currentTarget.setPointerCapture(e.pointerId)
+    if(folhaRef.current)folhaRef.current.style.transition='none'
+    if(veuRef.current)veuRef.current.style.transition='none'
+  }
+  function aoMover(e){
+    const a=arrasto.current;if(!a)return
+    let dy=e.clientY-a.y0
+    if(dy<0)dy=-elastico(-dy)
+    a.dy=dy
+    a.hist.push({y:e.clientY,t:performance.now()});if(a.hist.length>6)a.hist.shift()
+    const f=folhaRef.current,v=veuRef.current
+    if(f)f.style.transform=`translate3d(0,${dy}px,0)`
+    if(f&&v)v.style.opacity=String(Math.max(0,Math.min(1,1-dy/(f.offsetHeight||400))))
+  }
+  function aoSoltar(){
+    const a=arrasto.current;if(!a)return
+    arrasto.current=null
+    const p=a.hist[0],u=a.hist[a.hist.length-1]
+    const vel=u.t>p.t?(u.y-p.y)/(u.t-p.t):0 // px/ms; positivo = para baixo
+    const f=folhaRef.current,v=veuRef.current
+    if(f){f.style.transition='';f.style.transform=''}
+    if(v){v.style.transition='';v.style.opacity=''}
+    if(a.dy>120||vel>0.5)fecharRef.current()
+  }
+
+  if(!montada)return null
+  return(
+    <>
+      <div ref={veuRef} className={`cp-veu${visivel?' on':''}`} onClick={()=>fecharRef.current()}/>
+      <div ref={folhaRef} className={`cp-folha${visivel?' on':''}`} role="dialog" aria-modal="true" aria-label={titulo}>
+        <div className="cp-pega" onPointerDown={aoTocar} onPointerMove={aoMover} onPointerUp={aoSoltar} onPointerCancel={aoSoltar}><span/></div>
+        {children}
+      </div>
+    </>
+  )
+}
+
 function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
   const [tab,setTab]=useState('agendar')
   const [srvs,setSrvs]=useState([])
@@ -2998,26 +3088,85 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
   const [fotoPreview,setFotoPreview]=useState(null)
   const [fotoBase64,setFotoBase64]=useState(null)
   const [err,setErr]=useState('')
-  const [ok,setOk]=useState('')
   const [sending,setSending]=useState(false)
   const [showConfirm,setShowConfirm]=useState(false)
   const [fotoPopup,setFotoPopup]=useState(null)
+  const [sucesso,setSucesso]=useState(false)
+  const [rolou,setRolou]=useState(false)
   const fileRef=useRef(null)
+  const heroRef=useRef(null),ultimaFotoRef=useRef(null),segRef=useRef(null),passoSrvRef=useRef(null),passoDataRef=useRef(null),rolouRef=useRef(false)
   const [,setFuncTick]=useState(0)
   const [portal,setPortal]=useState(DEFAULT_PORTAL)
+
+  const recarregarAgenda=()=>supabase.from('salon_bookings').select('*').neq('status','cancelled').then(({data})=>setTodosAgs(data||[]))
+  const recarregarMinhas=()=>supabase.from('salon_bookings').select('*').eq('client_name',cliente.full_name).order('booking_date','desc').then(({data})=>setAgs(data||[]))
 
   useEffect(()=>{
     carregarFuncionamento().then(()=>setFuncTick(t=>t+1))
     carregarPortal().then(setPortal)
     supabase.from('services').select('*').eq('active',true).order('name').then(({data})=>setSrvs(data||[]))
     supabase.from('salon_professionals').select('*').eq('active',true).order('full_name').then(({data})=>setProfs(data||[]))
-    supabase.from('salon_bookings').select('*').eq('client_name',cliente.full_name).order('booking_date','desc').then(({data})=>setAgs(data||[]))
-    supabase.from('salon_bookings').select('*').neq('status','cancelled').then(({data})=>setTodosAgs(data||[]))
+    recarregarMinhas()
+    recarregarAgenda()
     supabase.from('salon_blocks').select('*').then(({data})=>setTodosBlocks(data||[]))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   },[cliente.full_name])
+
+  // barra de status do celular na cor do topo do portal
+  useEffect(()=>{
+    let m=document.querySelector('meta[name="theme-color"]')
+    const criado=!m
+    if(!m){m=document.createElement('meta');m.name='theme-color';document.head.appendChild(m)}
+    const ant=m.content
+    m.content='#FBF8F3'
+    return()=>{if(criado)m.remove();else m.content=ant}
+  },[])
+
+  // parallax da foto + cabeçalho que ganha corpo ao rolar (só transform/opacity)
+  useEffect(()=>{
+    const reduz=reduzMovimento()
+    let raf=0
+    const quadro=()=>{
+      raf=0
+      const y=window.scrollY
+      if(!reduz&&heroRef.current)heroRef.current.style.setProperty('--sy',String(Math.min(Math.max(y,0),640)))
+      const r=y>24
+      if(r!==rolouRef.current){rolouRef.current=r;setRolou(r)}
+    }
+    const aoRolar=()=>{if(!raf)raf=requestAnimationFrame(quadro)}
+    window.addEventListener('scroll',aoRolar,{passive:true})
+    quadro()
+    return()=>{window.removeEventListener('scroll',aoRolar);cancelAnimationFrame(raf)}
+  },[])
+
+  function rolarAte(ref){
+    requestAnimationFrame(()=>requestAnimationFrame(()=>ref.current?.scrollIntoView({behavior:reduzMovimento()?'auto':'smooth',block:'start'})))
+  }
+  function trocarTab(id){
+    if(id===tab)return
+    setTab(id)
+    const seg=segRef.current
+    if(seg){
+      const topo=seg.getBoundingClientRect().top+window.scrollY-76
+      if(window.scrollY>topo)window.scrollTo({top:topo,behavior:reduzMovimento()?'auto':'smooth'})
+    }
+  }
 
   // Serviços filtrados pelo tipo do profissional selecionado
   const srvsDoProf=selProf?srvs.filter(s=>!selProf.tipo||s.tipo===selProf.tipo||!s.tipo):srvs
+
+  // próximos 30 dias para a faixa de datas
+  const dias=[]
+  {
+    const base=new Date();base.setHours(12,0,0,0)
+    for(let i=0;i<30;i++){
+      const x=new Date(base);x.setDate(base.getDate()+i)
+      const dmy=`${String(x.getDate()).padStart(2,'0')}/${String(x.getMonth()+1).padStart(2,'0')}/${x.getFullYear()}`
+      dias.push({dmy,n:x.getDate(),sem:i===0?'hoje':x.toLocaleDateString('pt-BR',{weekday:'short'}).replace('.',''),mes:x.toLocaleDateString('pt-BR',{month:'short'}).replace('.',''),aberto:isDiaAberto(dmy)})
+    }
+  }
+  const primeiroDiaAberto=()=>(dias.find(d=>d.aberto)||{dmy:todayStr()}).dmy
+  const dataForaDaFaixa=selDmy&&!dias.some(d=>d.dmy===selDmy)
 
   function getSlotsLivres(dmy){
     if(!selProf||!dmy||!selSrv)return[]
@@ -3048,6 +3197,8 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
   }
 
   const slotsLivres=getSlotsLivres(selDmy)
+  const turnos=[['Manhã',h=>h<'12:00'],['Tarde',h=>h>='12:00'&&h<'18:00'],['Noite',h=>h>='18:00']]
+    .map(([nome,f])=>[nome,slotsLivres.filter(f)]).filter(([,lista])=>lista.length)
 
   function handleFoto(e){
     const f=e.target.files?.[0];if(!f)return
@@ -3071,12 +3222,19 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
       reference_photo:fotoBase64||null,
     })
     setSending(false)
-    if(error){setErr('Erro: '+error.message);setShowConfirm(false);return}
+    if(error){
+      // ex.: o horário acabou de ser ocupado por outra cliente
+      setErr(error.message||'Não foi possível enviar. Tente novamente.')
+      setShowConfirm(false);setSelTime('')
+      recarregarAgenda()
+      return
+    }
     setShowConfirm(false)
-    setOk('✅ Solicitação enviada! Aguarde confirmação do salão.')
+    setSucesso(true)
+    try{navigator.vibrate&&navigator.vibrate(12)}catch{}
     setSelProf(null);setSelSrv(null);setSelDmy(todayStr());setSelTime('');setFotoPreview(null);setFotoBase64(null)
-    supabase.from('salon_bookings').select('*').eq('client_name',cliente.full_name).order('booking_date','desc').then(({data})=>setAgs(data||[]))
-    setTimeout(()=>{setOk('');setTab('historico')},2200)
+    recarregarMinhas();recarregarAgenda()
+    setTimeout(()=>{setSucesso(false);setTab('historico');window.scrollTo({top:0,behavior:reduzMovimento()?'auto':'smooth'})},2400)
   }
 
   const minhasAgs=ags.map(a=>({
@@ -3084,409 +3242,601 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
     srvName:a.service_name,profName:a.professional_name,status:a.status,price:Number(a.service_price)||0,
     refPhoto:a.reference_photo||null
   }))
+  const hojeISO=todayISO(),anoAtual=hojeISO.slice(0,4)
+  const mesDoCard=dmy=>mesCurto(dmy)+(dmy.slice(6)!==anoAtual?` ${dmy.slice(8)}`:'')
+  const proximas=minhasAgs
+    .filter(a=>(a.status==='pending'||a.status==='scheduled')&&dmyToISO(a.dmy)>=hojeISO)
+    .sort((a,b)=>(dmyToISO(a.dmy)+a.time).localeCompare(dmyToISO(b.dmy)+b.time))
+  const anteriores=minhasAgs.filter(a=>!proximas.includes(a))
   const statusInfo=s=>{
     if(s==='pending')  return{label:'Aguardando',bg:'#fdf3e0',color:'#8a6020'}
     if(s==='scheduled')return{label:'Confirmado',bg:'#e8f5ec',color:'#3a7a4a'}
-    if(s==='completed')return{label:'Finalizado',bg:'#e8f5ec',color:'#3a7a4a'}
+    if(s==='completed')return{label:'Finalizado',bg:'#eef1ec',color:'#5d6f58'}
     if(s==='cancelled')return{label:'Cancelado',bg:'#fbeaea',color:'#b33a3a'}
     return{label:s,bg:'#f4f3f1',color:'#7a7a6a'}
   }
 
-  const P='#9A7D56',PA='#C5A880',PP='rgba(197,168,128,.1)',PB='rgba(197,168,128,.3)'
+  if(fotoPopup)ultimaFotoRef.current=fotoPopup
+  const pronto=!!(selProf&&selSrv&&selDmy&&selTime)
+  const primeiroNome=(cliente.full_name||'').split(' ')[0]
+  const TABS=[{id:'agendar',l:'Agendar'},{id:'historico',l:'Reservas'},{id:'sobre',l:'Sobre'}]
+  const iTab=Math.max(0,TABS.findIndex(t=>t.id===tab))
+
   const css=`
-    @import url('https://fonts.googleapis.com/css2?family=Parisienne&display=swap');
-    body{background:#FAFAFA!important;margin:0;}
-    .cpw{max-width:440px;margin:0 auto;padding:0 16px 80px;}
-    .tab-bar{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;background:#f0ede8;padding:5px;border-radius:14px;margin-bottom:20px;}
-    .tab-btn{display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 6px;border:none;border-radius:10px;
-      font-family:'Manrope',sans-serif;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;background:transparent;color:#999;}
-    .tab-btn.on{background:#fff;color:${P};box-shadow:0 1px 6px rgba(0,0,0,.08);}
-    .srv-card{background:#fff;border-radius:14px;padding:14px 16px;border:2px solid #eee;
-      cursor:pointer;transition:all .18s;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.04);}
-    .srv-card:active{transform:scale(.98);}
-    .srv-card.sel{border-color:${PA};background:${PP};}
-    .prof-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:4px;}
-    .prof-card{background:#fff;border:2px solid #eee;border-radius:14px;padding:14px 10px;
-      text-align:center;cursor:pointer;transition:all .18s;box-shadow:0 1px 4px rgba(0,0,0,.04);}
-    .prof-card.sel{border-color:${PA};background:${PP};}
-    .time-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px;}
-    .tc{padding:9px 4px;border:2px solid #eee;border-radius:10px;background:#fff;
-      font-family:'Manrope',sans-serif;font-size:12px;font-weight:600;cursor:pointer;
-      text-align:center;transition:all .18s;color:#444;box-shadow:0 1px 3px rgba(0,0,0,.04);}
-    .tc.sel{background:${PA};border-color:${PA};color:#fff;}
-    .upload-area{border:2px dashed ${PA};border-radius:14px;padding:24px 16px;
-      text-align:center;cursor:pointer;transition:all .18s;background:#fdf9f3;}
-    .upload-area:hover{background:${PP};}
-    .lbl-s{font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
-      color:#aaa;display:flex;align-items:center;gap:6px;margin-bottom:10px;}
-    .res-card{background:#fff;border-radius:14px;padding:14px 16px;border:1px solid #f0ede8;
-      box-shadow:0 1px 4px rgba(0,0,0,.04);display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;}
-    .hdr{background:#fff;border-bottom:1px solid #f0ede8;position:sticky;top:0;z-index:100;box-shadow:0 1px 8px rgba(0,0,0,.06);}
-    .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:flex;align-items:flex-end;justify-content:center;}
-    .popup{background:#fff;border-radius:24px 24px 0 0;padding:28px 24px 36px;width:100%;max-width:440px;animation:slideUp .28s ease;}
-    @keyframes slideUp{from{transform:translateY(60px);opacity:0}to{transform:translateY(0);opacity:1}}
+    body{background:#FBF8F3!important;margin:0;}
+    .cp-root{--ink:#2a2017;--ink2:#7d6c55;--ink3:#b0a089;--ouro:#9A7D56;--ouro2:#C5A880;--hair:rgba(154,125,86,.16);
+      --mola:cubic-bezier(.32,.72,0,1);--saida:cubic-bezier(.16,1,.3,1);min-height:100dvh;color:var(--ink);}
+    .cp-root input,.cp-root select,.cp-root textarea,.cp-root .inp{font-size:16px;}
+
+    /* ── Cabeçalho: vidro fosco sobre a foto ── */
+    .cp-hdr{position:fixed;top:0;left:0;right:0;z-index:120;padding-top:env(safe-area-inset-top,0px);
+      background:rgba(251,248,243,.6);-webkit-backdrop-filter:blur(18px) saturate(170%);backdrop-filter:blur(18px) saturate(170%);
+      transition:background .35s var(--saida),box-shadow .35s var(--saida);}
+    .cp-hdr.solid{background:rgba(251,248,243,.86);box-shadow:0 1px 0 var(--hair),0 10px 30px rgba(70,45,15,.06);}
+    .cp-hdr-in{max-width:480px;margin:0 auto;height:58px;padding:0 18px;display:flex;align-items:center;justify-content:space-between;}
+    .cp-av{width:38px;height:38px;border-radius:50%;flex-shrink:0;background:linear-gradient(135deg,var(--ouro2),var(--ouro));display:flex;align-items:center;justify-content:center;
+      font-family:'Noto Serif',serif;font-weight:700;font-size:16px;color:#fff;box-shadow:0 4px 12px rgba(154,125,86,.35),inset 0 1px 0 rgba(255,255,255,.35);}
+    .cp-ola{font-size:11px;color:var(--ink2);font-weight:600;}
+    .cp-nome{font-size:15px;font-weight:800;color:var(--ink);letter-spacing:-.2px;}
+    .cp-sair{border:1px solid var(--hair);background:rgba(255,253,249,.7);color:#a0453b;font-family:'Manrope',sans-serif;font-size:12px;font-weight:700;
+      padding:8px 15px;border-radius:999px;cursor:pointer;transition:transform .12s ease-out;}
+    .cp-sair:active{transform:scale(.94);}
+
+    /* ── Topo: a Morgane se dissolvendo no fundo ── */
+    .cp-hero{position:relative;max-width:480px;margin:0 auto;height:min(60svh,440px);overflow:hidden;}
+    .cp-hero-brilho{position:absolute;inset:0;background:radial-gradient(70% 55% at 60% 36%,rgba(226,181,105,.30),transparent 72%),radial-gradient(60% 45% at 8% 88%,rgba(238,199,179,.55),transparent 70%),radial-gradient(55% 40% at 95% 80%,rgba(238,199,179,.40),transparent 70%);}
+    .cp-hero-media{position:absolute;inset:0;animation:cp-materializa 1.2s var(--saida) both;}
+    .cp-hero-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 16%;
+      -webkit-mask-image:radial-gradient(64% 76% at 50% 38%,#000 52%,transparent 100%);mask-image:radial-gradient(64% 76% at 50% 38%,#000 52%,transparent 100%);
+      transform:translate3d(0,calc(var(--sy,0) * .32px),0) scale(calc(1 + var(--sy,0) * .00025));opacity:calc(1 - var(--sy,0) / 560);will-change:transform,opacity;}
+    .cp-hero-luz{position:absolute;inset:0;pointer-events:none;mix-blend-mode:soft-light;background:radial-gradient(70% 50% at 72% 14%,rgba(255,214,150,.55),transparent 70%);}
+    .cp-hero-veu{position:absolute;inset:0;pointer-events:none;background:linear-gradient(to bottom,rgba(251,248,243,0) 58%,rgba(251,248,243,.72) 80%,#FBF8F3 97%);}
+    .cp-hero-txt{position:relative;z-index:2;max-width:480px;margin:-86px auto 0;padding:0 20px;text-align:center;}
+    .cp-eyebrow{font-size:10px;font-weight:800;letter-spacing:5px;text-transform:uppercase;color:var(--ouro);animation:cp-sobe .9s .35s var(--saida) both;}
+    .cp-assinatura{font-family:'Parisienne',cursive;font-size:56px;line-height:1.08;margin:2px 0 0;animation:cp-sobe 1s .45s var(--saida) both;
+      background:linear-gradient(135deg,#d9b46e 0%,#b8862f 48%,#8e6420 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:#a9781f;}
+    .cp-hero-sub{font-size:13px;color:var(--ink2);font-weight:500;margin-top:2px;animation:cp-sobe 1s .55s var(--saida) both;}
+    @keyframes cp-materializa{from{opacity:0;transform:scale(1.06);filter:blur(8px)}to{opacity:1;transform:none;filter:none}}
+    @keyframes cp-sobe{from{opacity:0;transform:translate3d(0,10px,0)}to{opacity:1;transform:none}}
+    @keyframes cp-entra{from{opacity:0;transform:translate3d(0,14px,0)}to{opacity:1;transform:none}}
+
+    .cp-main{max-width:480px;margin:0 auto;padding:4px 18px 48px;transition:padding-bottom .4s var(--mola);}
+    .cp-main.com-cta{padding-bottom:132px;}
+
+    /* ── Abas: controle segmentado com pílula deslizante ── */
+    .cp-seg{position:relative;display:grid;grid-template-columns:repeat(3,1fr);padding:4px;border-radius:16px;background:rgba(154,125,86,.10);margin:18px 0 24px;}
+    .cp-seg-pilula{position:absolute;top:4px;bottom:4px;left:4px;width:calc((100% - 8px) / 3);border-radius:12px;background:#fffdf9;
+      box-shadow:0 1px 2px rgba(70,45,15,.08),0 6px 16px rgba(70,45,15,.10);transition:transform .5s var(--mola);}
+    .cp-seg button{position:relative;z-index:1;border:none;background:none;padding:11px 4px;font-family:'Manrope',sans-serif;font-size:13px;font-weight:700;
+      color:var(--ink2);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:color .25s,transform .12s ease-out;}
+    .cp-seg button.on{color:var(--ink);}
+    .cp-seg button:active{transform:scale(.96);}
+    .cp-bolinha{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:linear-gradient(135deg,#d9b46e,#9A7D56);color:#fff;font-size:10px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;}
+
+    .cp-pane{animation:cp-entra .5s var(--saida) both;}
+
+    /* ── Cartão promocional editável pelo admin ── */
+    .cp-promo{position:relative;border-radius:26px;overflow:hidden;margin-bottom:26px;padding:24px 20px 20px;
+      background:radial-gradient(120% 80% at 100% 0%,rgba(226,181,105,.30),transparent 55%),linear-gradient(150deg,#f8ece1 0%,#f3d9c8 55%,#eec7b3 100%);
+      border:1px solid rgba(201,153,47,.30);box-shadow:0 18px 44px rgba(160,110,60,.18),inset 0 1px 0 rgba(255,255,255,.6);}
+    .cp-fotos{display:flex;gap:10px;overflow-x:auto;padding:16px 20px 8px;margin:0 -20px;scroll-snap-type:x mandatory;scroll-padding:0 20px;scrollbar-width:none;overscroll-behavior-x:contain;}
+    .cp-fotos::-webkit-scrollbar{display:none;}
+    .cp-fotos div{flex-shrink:0;width:132px;height:170px;border-radius:18px;overflow:hidden;scroll-snap-align:start;border:2px solid rgba(255,255,255,.92);
+      box-shadow:0 8px 20px rgba(160,110,60,.22);transition:transform .16s ease-out;}
+    .cp-fotos div:active{transform:scale(.97);}
+
+    .cp-nota{display:flex;gap:10px;align-items:center;font-size:12.5px;color:var(--ink2);line-height:1.5;margin:-6px 0 22px;padding:0 4px;}
+
+    /* ── Passos do agendamento ── */
+    .cp-passo{margin-bottom:28px;scroll-margin-top:calc(70px + env(safe-area-inset-top,0px));animation:cp-entra .55s var(--saida) both;}
+    .cp-passo-hd{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
+    .cp-num{width:24px;height:24px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;
+      background:linear-gradient(135deg,var(--ouro2),var(--ouro));box-shadow:0 3px 8px rgba(154,125,86,.3);transition:background .3s;}
+    .cp-num.feito{background:linear-gradient(135deg,#7bb38a,#3a7a4a);box-shadow:0 3px 8px rgba(58,122,74,.25);}
+    .cp-passo-tt{font-family:'Noto Serif',serif;font-size:18px;font-weight:600;letter-spacing:-.3px;color:var(--ink);}
+    .cp-passo-extra{margin-left:auto;font-size:12px;color:var(--ink3);font-weight:600;}
+
+    .cp-opcao{position:relative;background:#fffdf9;border:1px solid var(--hair);border-radius:18px;cursor:pointer;font-family:'Manrope',sans-serif;color:var(--ink);
+      box-shadow:0 1px 2px rgba(70,45,15,.04),0 4px 14px rgba(70,45,15,.05);
+      transition:transform .16s ease-out,box-shadow .35s var(--saida),border-color .25s,background .25s;}
+    .cp-opcao:active{transform:scale(.975);}
+    .cp-opcao.sel{border-color:rgba(184,134,47,.55);background:linear-gradient(180deg,#fffaf0,#fcf1df);box-shadow:0 0 0 3px rgba(226,181,105,.22),0 12px 28px rgba(154,125,86,.16);}
+    @media (hover:hover) and (pointer:fine){.cp-opcao:hover{box-shadow:0 2px 4px rgba(70,45,15,.05),0 14px 30px rgba(70,45,15,.10);}}
+    .cp-check{position:absolute;top:10px;right:10px;width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,#d9b46e,#9A7D56);color:#fff;
+      display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;transform:scale(0);opacity:0;transition:transform .4s cubic-bezier(.34,1.4,.64,1),opacity .2s;}
+    .cp-opcao.sel .cp-check{transform:scale(1);opacity:1;}
+
+    .cp-profs{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;}
+    .cp-prof{padding:18px 10px 16px;text-align:center;}
+    .cp-profs.solo{grid-template-columns:1fr;}
+    .cp-profs.solo .cp-prof{display:flex;align-items:center;gap:16px;text-align:left;padding:14px 18px;}
+    .cp-profs.solo .cp-prof-foto{margin:0;width:66px;height:66px;}
+    .cp-profs.solo .cp-prof-nome{font-size:17px;}
+    .cp-profs.solo .cp-check{top:50%;margin-top:-11px;right:18px;}
+    .cp-prof-foto{width:68px;height:68px;border-radius:50%;margin:0 auto 10px;overflow:hidden;display:flex;align-items:center;justify-content:center;
+      background:linear-gradient(135deg,#f3e7d6,#e9d6bc);font-family:'Noto Serif',serif;font-size:24px;font-weight:700;color:var(--ouro);
+      box-shadow:0 0 0 3px #fffdf9,0 0 0 4.5px rgba(197,168,128,.55),0 8px 18px rgba(154,125,86,.22);}
+    .cp-prof-foto img{width:100%;height:100%;object-fit:cover;object-position:50% 18%;}
+    .cp-prof-nome{font-size:14px;font-weight:800;letter-spacing:-.2px;}
+    .cp-prof-esp{font-size:11.5px;color:var(--ink3);margin-top:2px;}
+
+    .cp-srv{display:flex;align-items:center;gap:14px;padding:15px 16px;margin-bottom:10px;width:100%;text-align:left;}
+    .cp-radio{width:22px;height:22px;border-radius:50%;flex-shrink:0;border:1.5px solid rgba(154,125,86,.35);display:flex;align-items:center;justify-content:center;
+      color:#fff;font-size:12px;font-weight:900;transition:background .25s,border-color .25s,transform .35s cubic-bezier(.34,1.4,.64,1);}
+    .cp-opcao.sel .cp-radio{background:linear-gradient(135deg,#d9b46e,#9A7D56);border-color:transparent;transform:scale(1.06);}
+    .cp-srv-nome{font-size:14.5px;font-weight:800;letter-spacing:-.2px;}
+    .cp-srv-desc{font-size:12px;color:var(--ink3);margin-top:2px;line-height:1.45;}
+    .cp-srv-preco{margin-left:auto;text-align:right;flex-shrink:0;}
+    .cp-srv-preco b{display:block;font-family:'Noto Serif',serif;font-size:16px;color:var(--ouro);}
+    .cp-srv-preco span{font-size:11px;color:var(--ink3);}
+
+    .cp-dias{display:flex;gap:8px;overflow-x:auto;padding:4px 18px 10px;margin:0 -18px;scroll-snap-type:x proximity;scroll-padding:0 18px;scrollbar-width:none;overscroll-behavior-x:contain;}
+    .cp-dias::-webkit-scrollbar{display:none;}
+    .cp-dia{flex:0 0 auto;width:60px;padding:10px 0 11px;scroll-snap-align:start;text-align:center;}
+    .cp-dia .s{font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--ink3);}
+    .cp-dia .n{font-family:'Noto Serif',serif;font-size:21px;font-weight:700;line-height:1.15;margin-top:3px;}
+    .cp-dia .m{font-size:10px;color:var(--ink3);font-weight:700;}
+    .cp-dia.sel{background:linear-gradient(160deg,#d9b46e,#9A7D56);border-color:transparent;box-shadow:0 10px 22px rgba(154,125,86,.35);}
+    .cp-dia.sel .s,.cp-dia.sel .n,.cp-dia.sel .m{color:#fff;}
+    .cp-dia:disabled{opacity:.35;cursor:not-allowed;box-shadow:none;}
+    .cp-dia.outra{position:relative;}
+    .cp-dia.outra input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;}
+    .cp-dia-escolhida{font-size:13px;color:var(--ink2);font-weight:600;margin-top:4px;padding:0 2px;}
+
+    .cp-turno{font-size:10.5px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;color:var(--ink3);margin:12px 0 8px;}
+    .cp-horas{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+    .cp-hora{padding:12px 0;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;text-align:center;}
+    .cp-hora.sel{background:linear-gradient(160deg,#d9b46e,#9A7D56);color:#fff;border-color:transparent;box-shadow:0 10px 22px rgba(154,125,86,.35);}
+
+    .cp-upload{border:1.5px dashed rgba(184,134,47,.45);border-radius:18px;padding:22px 16px;text-align:center;background:rgba(255,253,249,.7);cursor:pointer;transition:transform .16s ease-out,background .25s;}
+    .cp-upload:active{transform:scale(.98);background:#fff8ec;}
+    .cp-vazio{background:rgba(255,253,249,.7);border:1px dashed rgba(154,125,86,.28);border-radius:18px;padding:18px;text-align:center;font-size:13px;color:var(--ink3);line-height:1.5;}
+
+    /* ── Barra flutuante de confirmação (material translúcido) ── */
+    .cp-cta{position:fixed;left:0;right:0;bottom:0;z-index:150;padding:0 14px calc(14px + env(safe-area-inset-bottom,0px));pointer-events:none;
+      transform:translate3d(0,130%,0);opacity:0;transition:transform .55s var(--mola),opacity .3s ease;}
+    .cp-cta.on{transform:none;opacity:1;}
+    .cp-cta.on .cp-cta-in{pointer-events:auto;}
+    .cp-cta-in{max-width:452px;margin:0 auto;display:flex;align-items:center;gap:12px;padding:10px 10px 10px 18px;border-radius:24px;
+      background:rgba(255,253,249,.80);-webkit-backdrop-filter:blur(22px) saturate(180%);backdrop-filter:blur(22px) saturate(180%);
+      border:1px solid rgba(255,255,255,.75);box-shadow:0 20px 50px rgba(70,45,15,.22),inset 0 1px 0 rgba(255,255,255,.85);}
+    .cp-cta-txt{flex:1;min-width:0;}
+    .cp-cta-txt b{display:block;font-size:14px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .cp-cta-txt span{font-size:12px;color:var(--ink2);font-weight:600;}
+    .cp-btn-ouro{position:relative;overflow:hidden;border:none;cursor:pointer;border-radius:17px;padding:14px 22px;font-family:'Manrope',sans-serif;font-size:13.5px;font-weight:800;
+      letter-spacing:.3px;color:#fff;background:linear-gradient(135deg,#d9b46e 0%,#b8862f 52%,#9A7D56 100%);
+      box-shadow:0 8px 22px rgba(154,125,86,.40),inset 0 1px 0 rgba(255,255,255,.35);transition:transform .14s ease-out,opacity .2s;}
+    .cp-btn-ouro:active{transform:scale(.96);}
+    .cp-btn-ouro:disabled{opacity:.6;cursor:not-allowed;}
+    .cp-btn-ouro::after{content:'';position:absolute;top:0;left:-120%;width:50%;height:100%;background:linear-gradient(105deg,transparent,rgba(255,255,255,.45),transparent);
+      transform:skewX(-18deg);animation:cp-reflexo 5s 1.5s ease-in-out infinite;}
+    @keyframes cp-reflexo{0%{left:-120%}28%,100%{left:160%}}
+    .cp-btn-leve{border:1px solid var(--hair);background:rgba(255,253,249,.7);color:var(--ink2);cursor:pointer;border-radius:16px;padding:14px 18px;
+      font-family:'Manrope',sans-serif;font-size:13px;font-weight:700;transition:transform .14s ease-out;}
+    .cp-btn-leve:active{transform:scale(.96);}
+
+    /* ── Folha inferior ── */
+    .cp-veu{position:fixed;inset:0;z-index:300;background:rgba(36,24,12,.42);opacity:0;transition:opacity .45s var(--mola);}
+    .cp-veu.on{opacity:1;}
+    .cp-folha{position:fixed;left:0;right:0;bottom:0;margin:0 auto;max-width:480px;z-index:301;max-height:88dvh;overflow-y:auto;overscroll-behavior:contain;
+      background:rgba(255,253,249,.94);-webkit-backdrop-filter:blur(26px) saturate(180%);backdrop-filter:blur(26px) saturate(180%);
+      border-radius:30px 30px 0 0;border-top:1px solid rgba(255,255,255,.8);box-shadow:0 -24px 70px rgba(70,45,15,.28);
+      padding:0 22px calc(22px + env(safe-area-inset-bottom,0px));transform:translate3d(0,100%,0);transition:transform .46s var(--mola);}
+    .cp-folha.on{transform:none;}
+    .cp-pega{display:flex;justify-content:center;padding:10px 0 14px;touch-action:none;cursor:grab;}
+    .cp-pega span{width:42px;height:5px;border-radius:3px;background:rgba(120,90,50,.25);}
+    .cp-resumo{border-radius:20px;background:linear-gradient(180deg,#fffaf2,#fbf2e4);border:1px solid rgba(201,153,47,.2);padding:4px 16px;margin:16px 0 18px;}
+    .cp-resumo-l{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid rgba(154,125,86,.12);}
+    .cp-resumo-l:last-child{border-bottom:none;}
+    .cp-resumo-l span{font-size:12.5px;color:var(--ink3);font-weight:600;}
+    .cp-resumo-l b{font-size:14px;font-weight:800;text-align:right;}
+
+    /* ── Sucesso ── */
+    .cp-ok{position:fixed;inset:0;z-index:400;display:flex;align-items:center;justify-content:center;padding:24px;
+      background:rgba(251,248,243,.74);-webkit-backdrop-filter:blur(16px) saturate(160%);backdrop-filter:blur(16px) saturate(160%);animation:cp-surge .35s ease both;}
+    .cp-ok-card{text-align:center;max-width:300px;animation:cp-pop .65s cubic-bezier(.34,1.3,.64,1) both;}
+    .cp-ok svg circle{stroke-dasharray:166;stroke-dashoffset:166;animation:cp-traco .75s .15s var(--saida) forwards;}
+    .cp-ok svg path{stroke-dasharray:48;stroke-dashoffset:48;animation:cp-traco .45s .7s var(--saida) forwards;}
+    @keyframes cp-traco{to{stroke-dashoffset:0}}
+    @keyframes cp-pop{from{opacity:0;transform:scale(.86)}to{opacity:1;transform:none}}
+    @keyframes cp-surge{from{opacity:0}to{opacity:1}}
+
+    /* ── Reservas ── */
+    .cp-sec-tt{font-family:'Noto Serif',serif;font-size:19px;font-weight:600;letter-spacing:-.3px;margin:6px 0 12px;display:flex;align-items:center;gap:8px;}
+    .cp-sec-tt small{font-family:'Manrope',sans-serif;font-size:12px;color:var(--ink3);font-weight:700;letter-spacing:0;}
+    .cp-res{display:flex;gap:14px;align-items:center;padding:14px;margin-bottom:10px;cursor:default;animation:cp-entra .5s var(--saida) both;}
+    .cp-res-data{flex:0 0 56px;height:62px;border-radius:15px;background:linear-gradient(160deg,#f8ece1,#efd2bf);display:flex;flex-direction:column;align-items:center;justify-content:center;}
+    .cp-res-data .d{font-family:'Noto Serif',serif;font-size:23px;font-weight:700;color:#5c3d1e;line-height:1;}
+    .cp-res-data .m{font-size:10px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:var(--ouro);margin-top:4px;}
+    .cp-res.passada{opacity:.82;}
+    .cp-res.passada .cp-res-data{background:#f1ece4;}
+    .cp-pill{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding:4px 9px;border-radius:999px;}
+    .cp-link{background:none;border:none;padding:0;margin-top:6px;cursor:pointer;color:var(--ouro);font-family:'Manrope',sans-serif;font-size:12px;font-weight:700;text-decoration:underline;text-underline-offset:3px;}
+    .cp-card{background:#fffdf9;border:1px solid var(--hair);border-radius:22px;padding:20px;margin-bottom:16px;box-shadow:0 1px 2px rgba(70,45,15,.04),0 6px 20px rgba(70,45,15,.05);}
+
+    /* ── Sobre ── */
+    .cp-sobre-topo{display:flex;gap:16px;align-items:center;}
+    .cp-sobre-foto{width:92px;height:92px;flex-shrink:0;border-radius:50%;overflow:hidden;
+      -webkit-mask-image:radial-gradient(circle at 50% 45%,#000 58%,transparent 72%);mask-image:radial-gradient(circle at 50% 45%,#000 58%,transparent 72%);}
+    .cp-sobre-foto img{width:100%;height:100%;object-fit:cover;object-position:50% 16%;}
+    .cp-tl{position:relative;padding-left:38px;}
+    .cp-tl::before{content:'';position:absolute;left:12px;top:8px;bottom:8px;width:1.5px;background:linear-gradient(to bottom,rgba(197,168,128,.7),rgba(197,168,128,.15));}
+    .cp-tl-item{position:relative;margin-bottom:16px;font-size:14px;color:var(--ink2);line-height:1.55;animation:cp-entra .5s var(--saida) both;}
+    .cp-tl-item:last-child{margin-bottom:0;}
+    .cp-tl-item i{position:absolute;left:-38px;top:-1px;width:25px;height:25px;border-radius:50%;font-style:normal;display:flex;align-items:center;justify-content:center;
+      font-size:11px;font-weight:800;color:#fff;background:linear-gradient(135deg,var(--ouro2),var(--ouro));box-shadow:0 0 0 4px #fffdf9;}
+    .cp-benef{display:flex;gap:12px;align-items:flex-start;margin-bottom:12px;font-size:14px;color:var(--ink2);line-height:1.5;}
+    .cp-benef i{flex-shrink:0;width:22px;height:22px;border-radius:50%;font-style:normal;display:flex;align-items:center;justify-content:center;
+      font-size:11px;font-weight:900;color:#3a7a4a;background:#e8f3ea;margin-top:1px;}
+    .cp-mito{border-radius:16px;background:linear-gradient(180deg,#fbf5ec,#f7eee1);padding:14px 16px;margin-bottom:10px;}
+
+    @media (prefers-reduced-motion:reduce){
+      .cp-root *,.cp-root *::before,.cp-root *::after{animation-duration:.001ms!important;animation-delay:0s!important;animation-iteration-count:1!important;transition-duration:.001ms!important;}
+      .cp-hero-img,.cp-hero-txt{transform:none!important;opacity:1!important;}
+    }
+    @media (prefers-reduced-transparency:reduce){
+      .cp-hdr,.cp-cta-in,.cp-folha,.cp-ok{background:#fffdf9!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;}
+    }
   `
 
+  const cabecalhoPasso=(n,feito,titulo,extra)=>(
+    <div className="cp-passo-hd">
+      <div className={`cp-num${feito?' feito':''}`}>{feito?'✓':n}</div>
+      <div className="cp-passo-tt">{titulo}</div>
+      {extra&&<div className="cp-passo-extra">{extra}</div>}
+    </div>
+  )
+
   return(
-    <>
+    <div className="cp-root">
       <style>{G}</style>
       <style>{css}</style>
 
-      {/* HEADER */}
-      <div className="hdr">
-        <div style={{maxWidth:440,margin:'0 auto',padding:'14px 16px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-          <div style={{display:'flex',alignItems:'center',gap:12}}>
-            <div style={{width:40,height:40,borderRadius:'50%',
-              background:`linear-gradient(135deg,${PA},${P})`,
-              display:'flex',alignItems:'center',justifyContent:'center',
-              fontFamily:'Noto Serif,serif',fontSize:17,fontWeight:700,color:'#fff',
-              boxShadow:'0 2px 8px rgba(197,168,128,.35)'}}>
-              {(cliente.full_name||'?')[0]}
-            </div>
-            <div>
-              <div style={{fontSize:11,color:'#aaa',fontWeight:500}}>Olá, bem-vindo!</div>
-              <div style={{fontSize:13,fontWeight:700,color:'#333'}}>{cliente.full_name.split(' ')[0]}</div>
+      {/* CABEÇALHO */}
+      <header className={`cp-hdr${rolou?' solid':''}`}>
+        <div className="cp-hdr-in">
+          <div style={{display:'flex',alignItems:'center',gap:11,minWidth:0}}>
+            <div className="cp-av">{(cliente.full_name||'?')[0]}</div>
+            <div style={{minWidth:0}}>
+              <div className="cp-ola">Olá,</div>
+              <div className="cp-nome" style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{primeiroNome}</div>
             </div>
           </div>
-          <button onClick={onLogout} style={{fontSize:11,fontWeight:700,color:'#e53e3e',
-            background:'#fff5f5',border:'none',padding:'6px 14px',borderRadius:20,cursor:'pointer'}}>Sair</button>
+          <button className="cp-sair" onClick={onLogout}>Sair</button>
         </div>
+      </header>
+
+      {/* TOPO — Morgane */}
+      <div className="cp-hero" ref={heroRef} aria-hidden="true">
+        <div className="cp-hero-brilho"/>
+        <div className="cp-hero-media">
+          <img className="cp-hero-img" src={FOTO_MORGANE} alt="" fetchpriority="high" decoding="async"/>
+        </div>
+        <div className="cp-hero-luz"/>
+        <div className="cp-hero-veu"/>
+      </div>
+      <div className="cp-hero-txt">
+        <div className="cp-eyebrow">Sua Nail Designer</div>
+        <div className="cp-assinatura">Morgane Faoli</div>
+        <div className="cp-hero-sub">Seu momento de autocuidado, em poucos toques</div>
       </div>
 
-      <div className="cpw" style={{marginTop:16}}>
-        {/* TABS */}
-        <div className="tab-bar">
-          {[{id:'agendar',ic:'✨',l:'Agendar'},{id:'historico',ic:'📋',l:'Reservas'},{id:'sobre',ic:'💡',l:'Sobre'}].map(t=>(
-            <button key={t.id} className={`tab-btn${tab===t.id?' on':''}`} onClick={()=>setTab(t.id)}>
-              <span>{t.ic}</span>{t.l}
+      <main className={`cp-main${pronto&&tab==='agendar'?' com-cta':''}`}>
+        {/* ABAS */}
+        <div className="cp-seg" role="tablist" ref={segRef}>
+          <span className="cp-seg-pilula" style={{transform:`translateX(${iTab*100}%)`}}/>
+          {TABS.map(t=>(
+            <button key={t.id} role="tab" aria-selected={tab===t.id} className={tab===t.id?'on':''} onClick={()=>trocarTab(t.id)}>
+              {t.l}{t.id==='historico'&&proximas.length>0&&<span className="cp-bolinha">{proximas.length}</span>}
             </button>
           ))}
         </div>
 
         {/* ── ABA AGENDAR ── */}
         {tab==='agendar'&&(
-          <div>
+          <div className="cp-pane" key="agendar">
             {portal.hero&&portal.hero.ativo&&(
-              <div style={{position:'relative',borderRadius:24,overflow:'hidden',marginBottom:18,
-                background:'radial-gradient(120% 80% at 100% 0%, rgba(226,181,105,.30), transparent 55%), linear-gradient(150deg,#f8ece1 0%,#f3d9c8 55%,#eec7b3 100%)',
-                border:'1px solid rgba(201,153,47,.35)',boxShadow:'0 14px 36px rgba(160,110,60,.22)'}}>
+              <div className="cp-promo">
                 <div aria-hidden style={{position:'absolute',top:16,right:20,fontSize:18,color:'rgba(201,153,47,.5)'}}>♡</div>
-                <div style={{padding:'24px 20px 20px',position:'relative'}}>
-                  {portal.hero.scriptTop&&<div style={{fontFamily:'Parisienne,cursive',fontSize:32,lineHeight:1.05,marginBottom:2,...GOLD_TEXT}}>{portal.hero.scriptTop}</div>}
-                  {portal.hero.titulo&&<div style={{fontFamily:'Manrope,sans-serif',fontWeight:800,fontSize:29,lineHeight:1.03,color:'#4a2f16',textTransform:'uppercase',letterSpacing:'.3px'}}>{portal.hero.titulo}</div>}
-                  {portal.hero.subtitulo&&<div style={{display:'inline-block',marginTop:12,padding:'7px 16px',borderRadius:20,background:'linear-gradient(135deg,#e0b56a,#b8860b)',color:'#fff',fontSize:11.5,fontWeight:700,letterSpacing:'.4px',boxShadow:'0 4px 14px rgba(184,134,11,.35)'}}>{portal.hero.subtitulo}</div>}
-                  {portal.hero.promo&&<div style={{marginTop:14,padding:'11px 14px',borderRadius:14,background:'rgba(255,255,255,.62)',border:'1px solid rgba(201,153,47,.3)',fontSize:13,color:'#6b4a26',lineHeight:1.5}}>{portal.hero.promo}</div>}
-                  {(portal.hero.fotos||[]).length>0&&(
-                    <div style={{display:'flex',gap:10,overflowX:'auto',padding:'16px 2px 8px',scrollSnapType:'x mandatory',WebkitOverflowScrolling:'touch'}}>
-                      {(portal.hero.fotos||[]).slice(0,6).map((f,i)=>(
-                        <div key={i} style={{flexShrink:0,width:130,height:166,borderRadius:16,overflow:'hidden',scrollSnapAlign:'start',border:'2px solid rgba(255,255,255,.92)',boxShadow:'0 6px 16px rgba(160,110,60,.25)'}}>
-                          <img src={f} alt="" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {(portal.hero.destaques||[]).filter(d=>d&&d.txt).length>0&&(
-                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:11,marginTop:16}}>
-                      {(portal.hero.destaques||[]).filter(d=>d&&d.txt).map((d,i)=>(
-                        <div key={i} style={{display:'flex',alignItems:'center',gap:9}}>
-                          <div style={{width:34,height:34,borderRadius:'50%',background:'rgba(255,255,255,.72)',border:'1px solid rgba(201,153,47,.35)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}}>{d.ic}</div>
-                          <div style={{fontSize:11.5,fontWeight:600,color:'#6b4a26',lineHeight:1.2}}>{d.txt}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {portal.hero.rodape&&<div style={{fontFamily:'Parisienne,cursive',fontSize:23,textAlign:'center',marginTop:18,...GOLD_TEXT}}>{portal.hero.rodape}</div>}
-                </div>
+                {portal.hero.scriptTop&&<div style={{fontFamily:'Parisienne,cursive',fontSize:32,lineHeight:1.05,marginBottom:2,...GOLD_TEXT}}>{portal.hero.scriptTop}</div>}
+                {portal.hero.titulo&&<div style={{fontWeight:800,fontSize:28,lineHeight:1.04,color:'#4a2f16',textTransform:'uppercase',letterSpacing:'-.2px'}}>{portal.hero.titulo}</div>}
+                {portal.hero.subtitulo&&<div style={{display:'inline-block',marginTop:12,padding:'7px 16px',borderRadius:20,background:'linear-gradient(135deg,#e0b56a,#b8860b)',color:'#fff',fontSize:11.5,fontWeight:700,letterSpacing:'.4px',boxShadow:'0 4px 14px rgba(184,134,11,.35)'}}>{portal.hero.subtitulo}</div>}
+                {portal.hero.promo&&<div style={{marginTop:14,padding:'11px 14px',borderRadius:14,background:'rgba(255,255,255,.62)',border:'1px solid rgba(201,153,47,.3)',fontSize:13,color:'#6b4a26',lineHeight:1.5}}>{portal.hero.promo}</div>}
+                {(portal.hero.fotos||[]).length>0&&(
+                  <div className="cp-fotos">
+                    {(portal.hero.fotos||[]).slice(0,6).map((f,i)=>(
+                      <div key={i}><img src={f} alt="" loading="lazy" decoding="async" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/></div>
+                    ))}
+                  </div>
+                )}
+                {(portal.hero.destaques||[]).filter(d=>d&&d.txt).length>0&&(
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:11,marginTop:14}}>
+                    {(portal.hero.destaques||[]).filter(d=>d&&d.txt).map((d,i)=>(
+                      <div key={i} style={{display:'flex',alignItems:'center',gap:9}}>
+                        <div style={{width:34,height:34,borderRadius:'50%',background:'rgba(255,255,255,.72)',border:'1px solid rgba(201,153,47,.35)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}}>{d.ic}</div>
+                        <div style={{fontSize:11.5,fontWeight:600,color:'#6b4a26',lineHeight:1.2}}>{d.txt}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {portal.hero.rodape&&<div style={{fontFamily:'Parisienne,cursive',fontSize:23,textAlign:'center',marginTop:16,...GOLD_TEXT}}>{portal.hero.rodape}</div>}
               </div>
             )}
-            {ok&&<div className="alert alert-success" style={{marginBottom:16}}>{ok}</div>}
 
-            <div style={{background:'#fffbf2',border:'1px solid #f5e6c8',borderRadius:14,
-              padding:'12px 14px',display:'flex',gap:10,marginBottom:20,alignItems:'flex-start'}}>
-              <span style={{fontSize:16,flexShrink:0}}>✅</span>
-              <p style={{fontSize:12,color:'#8a6020',margin:0,lineHeight:1.6}}>
-                Sua solicitação será enviada ao salão e confirmada em tempo real pela nossa equipe.
-              </p>
-            </div>
+            <div className="cp-nota"><span style={{fontSize:16}}>✨</span>Escolha abaixo e envie — a Morgane confirma seu horário pelo app.</div>
+
+            {err&&<div className="alert alert-danger" style={{marginBottom:18}}>{err}</div>}
 
             {/* 1. PROFISSIONAL */}
-            <div style={{marginBottom:20}}>
-              <div className="lbl-s">👤 1. Com quem você quer ser atendida? *</div>
-              <div className="prof-grid">
-                {profs.map(p=>(
-                  <div key={p.id} className={`prof-card${selProf?.id===p.id?' sel':''}`}
-                    onClick={()=>{setSelProf(p);setSelSrv(null);setSelTime('')}}>
-                    <div style={{width:46,height:46,borderRadius:'50%',margin:'0 auto 8px',
-                      background:selProf?.id===p.id?`linear-gradient(135deg,${PA},${P})`:'#f0ede8',
-                      display:'flex',alignItems:'center',justifyContent:'center',
-                      fontFamily:'Noto Serif,serif',fontSize:18,fontWeight:700,
-                      color:selProf?.id===p.id?'#fff':'#aaa'}}>
-                      {(p.full_name||'?')[0]}
-                    </div>
-                    <div style={{fontSize:12,fontWeight:700,color:'#333',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.full_name.split(' ')[0]}</div>
-                    <div style={{fontSize:10,color:'#aaa',marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.specialty||'Especialista'}</div>
-                    {selProf?.id===p.id&&<div style={{fontSize:10,color:P,marginTop:4,fontWeight:700}}>✓ Selecionada</div>}
-                  </div>
-                ))}
+            <section className="cp-passo">
+              {cabecalhoPasso(1,!!selProf,'Com quem?')}
+              <div className={`cp-profs${profs.length===1?' solo':''}`}>
+                {profs.map(p=>{
+                  const foto=fotoDaProfissional(p.full_name)
+                  return(
+                    <button key={p.id} type="button" className={`cp-opcao cp-prof${selProf?.id===p.id?' sel':''}`}
+                      onClick={()=>{setSelProf(p);setSelSrv(null);setSelTime('');setErr('');rolarAte(passoSrvRef)}}>
+                      <span className="cp-check">✓</span>
+                      <div className="cp-prof-foto">{foto?<img src={foto} alt="" decoding="async"/>:(p.full_name||'?')[0]}</div>
+                      <div><div className="cp-prof-nome">{(p.full_name||'').split(' ')[0]}</div><div className="cp-prof-esp">{p.specialty||'Especialista'}</div></div>
+                    </button>
+                  )
+                })}
               </div>
-            </div>
+            </section>
 
-            {/* 2. SERVIÇO — filtrado pelo tipo da profissional */}
+            {/* 2. SERVIÇO */}
             {selProf&&(
-              <div style={{marginBottom:20}}>
-                <div className="lbl-s">✂️ 2. Qual procedimento? *</div>
+              <section className="cp-passo" ref={passoSrvRef}>
+                {cabecalhoPasso(2,!!selSrv,'Qual procedimento?')}
                 {srvsDoProf.length===0
-                  ?<div style={{background:'#f9f9f9',border:'1px dashed #ddd',borderRadius:12,padding:16,textAlign:'center',fontSize:12,color:'#aaa'}}>
-                    Nenhum serviço disponível para esta profissional
-                  </div>
+                  ?<div className="cp-vazio">Nenhum serviço disponível para esta profissional</div>
                   :srvsDoProf.map(s=>(
-                    <div key={s.id} className={`srv-card${selSrv?.id===s.id?' sel':''}`}
-                      onClick={()=>{setSelSrv(s);setSelTime('')}}>
-                      <div style={{fontSize:13,fontWeight:700,color:'#222',marginBottom:3}}>{s.name}</div>
-                      <div style={{fontSize:11,color:'#aaa',lineHeight:1.5}}>
-                        {s.description||`${s.duration_min} min de duração`}
-                      </div>
-                      {selSrv?.id===s.id&&<div style={{fontSize:10,color:P,marginTop:6,fontWeight:700}}>✓ Selecionado</div>}
-                    </div>
+                    <button key={s.id} type="button" className={`cp-opcao cp-srv${selSrv?.id===s.id?' sel':''}`}
+                      onClick={()=>{setSelSrv(s);setSelTime('');setErr('');if(!isDiaAberto(selDmy))setSelDmy(primeiroDiaAberto());rolarAte(passoDataRef)}}>
+                      <span className="cp-radio">{selSrv?.id===s.id?'✓':''}</span>
+                      <span style={{minWidth:0}}>
+                        <div className="cp-srv-nome">{s.name}</div>
+                        {s.description&&<div className="cp-srv-desc">{s.description}</div>}
+                      </span>
+                      <span className="cp-srv-preco"><b>{fmtCurrency(s.price||0)}</b><span>{s.duration_min||30} min</span></span>
+                    </button>
                   ))
                 }
-              </div>
+              </section>
             )}
 
             {/* 3. DATA */}
             {selSrv&&(
-              <div style={{marginBottom:20}}>
-                <div className="lbl-s">📅 3. Quando? *</div>
-                <input type="date" min={todayISO()} value={dmyToISO(selDmy)||''}
-                  onChange={e=>{setSelDmy(isoToDmy(e.target.value));setSelTime('')}}
-                  style={{width:'100%',background:'#fff',border:'1px solid #e8e3db',borderRadius:12,
-                    padding:'12px 14px',fontSize:14,fontFamily:'Manrope,sans-serif',outline:'none',
-                    boxSizing:'border-box',boxShadow:'0 1px 4px rgba(0,0,0,.04)'}}/>
-              </div>
+              <section className="cp-passo" ref={passoDataRef}>
+                {cabecalhoPasso(3,!!selDmy,'Quando?')}
+                <div className="cp-dias">
+                  {dias.map(d=>(
+                    <button key={d.dmy} type="button" disabled={!d.aberto} className={`cp-opcao cp-dia${selDmy===d.dmy?' sel':''}`}
+                      onClick={()=>{setSelDmy(d.dmy);setSelTime('');setErr('')}}>
+                      <div className="s">{d.sem}</div><div className="n">{d.n}</div><div className="m">{d.mes}</div>
+                    </button>
+                  ))}
+                  <label className={`cp-opcao cp-dia outra${dataForaDaFaixa?' sel':''}`}>
+                    <div className="s">outra</div><div className="n">📅</div><div className="m">data</div>
+                    <input type="date" min={todayISO()} value={dmyToISO(selDmy)||''} aria-label="Escolher outra data"
+                      onClick={e=>{try{e.currentTarget.showPicker&&e.currentTarget.showPicker()}catch{}}}
+                      onChange={e=>{if(e.target.value){setSelDmy(isoToDmy(e.target.value));setSelTime('');setErr('')}}}/>
+                  </label>
+                </div>
+                {selDmy&&<div className="cp-dia-escolhida">{dataLonga(selDmy)}</div>}
+              </section>
             )}
 
             {/* 4. HORÁRIO */}
             {selSrv&&selDmy&&(
-              <div style={{marginBottom:20}}>
-                <div className="lbl-s">🕐 4. Horário disponível *</div>
+              <section className="cp-passo" key={selDmy}>
+                {cabecalhoPasso(4,!!selTime,'Que horas?',slotsLivres.length?`${slotsLivres.length} livres`:'')}
                 {slotsLivres.length===0
-                  ?<div style={{background:'#f9f9f9',border:'1px dashed #ddd',borderRadius:12,
-                      padding:16,textAlign:'center',fontSize:12,color:'#aaa'}}>
-                    Nenhum horário disponível para esta data
-                  </div>
-                  :<div className="time-grid">
-                    {slotsLivres.map(h=>(
-                      <div key={h} className={`tc${selTime===h?' sel':''}`} onClick={()=>setSelTime(h)}>{h}</div>
-                    ))}
-                  </div>
+                  ?<div className="cp-vazio">{isDiaAberto(selDmy)?'Nenhum horário livre nesta data. Que tal outro dia?':'O salão não abre neste dia. Escolha outra data.'}</div>
+                  :turnos.map(([nome,lista])=>(
+                    <div key={nome}>
+                      <div className="cp-turno">{nome}</div>
+                      <div className="cp-horas">
+                        {lista.map(h=>(
+                          <button key={h} type="button" className={`cp-opcao cp-hora${selTime===h?' sel':''}`} onClick={()=>{setSelTime(h);setErr('')}}>{h}</button>
+                        ))}
+                      </div>
+                    </div>
+                  ))
                 }
-              </div>
+              </section>
             )}
 
             {/* 5. FOTO (opcional) */}
             {selTime&&(
-              <div style={{marginBottom:20}}>
-                <div className="lbl-s">📎 Foto de referência <span style={{textTransform:'none',letterSpacing:0,fontWeight:400}}>(opcional)</span></div>
+              <section className="cp-passo">
+                {cabecalhoPasso(5,!!fotoPreview,'Tem uma referência?','opcional')}
                 <input ref={fileRef} type="file" accept="image/*" style={{display:'none'}} onChange={handleFoto}/>
                 {!fotoPreview
-                  ?<div className="upload-area" onClick={()=>fileRef.current?.click()}>
-                    <div style={{fontSize:28,marginBottom:6}}>📎</div>
-                    <div style={{fontSize:13,fontWeight:600,color:P}}>Toque para subir da galeria</div>
-                    <div style={{fontSize:11,color:'#aaa',marginTop:4}}>A profissional verá sua referência</div>
+                  ?<div className="cp-upload" role="button" tabIndex={0} onClick={()=>fileRef.current?.click()} onKeyDown={e=>e.key==='Enter'&&fileRef.current?.click()}>
+                    <div style={{fontSize:26,marginBottom:6}}>🖼️</div>
+                    <div style={{fontSize:13.5,fontWeight:700,color:'var(--ouro)'}}>Toque para escolher da galeria</div>
+                    <div style={{fontSize:12,color:'var(--ink3)',marginTop:4}}>A Morgane verá a inspiração antes do seu horário</div>
                   </div>
-                  :<div style={{borderRadius:14,overflow:'hidden',border:`2px solid ${PB}`}} onClick={()=>fileRef.current?.click()}>
-                    <img src={fotoPreview} alt="Ref" style={{width:'100%',maxHeight:200,objectFit:'cover',display:'block'}}/>
-                    <div style={{padding:'8px 14px',background:PP,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                      <span style={{fontSize:12,color:P,fontWeight:600}}>✓ Foto adicionada</span>
-                      <button onClick={e=>{e.stopPropagation();setFotoPreview(null)}}
-                        style={{background:'none',border:'none',cursor:'pointer',fontSize:12,color:'#aaa'}}>Remover</button>
+                  :<div className="cp-opcao sel" style={{overflow:'hidden',cursor:'default'}}>
+                    <img src={fotoPreview} alt="Sua referência" style={{width:'100%',maxHeight:220,objectFit:'cover',display:'block'}}/>
+                    <div style={{padding:'10px 14px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                      <span style={{fontSize:12.5,color:'var(--ouro)',fontWeight:700}}>✓ Referência adicionada</span>
+                      <span style={{display:'flex',gap:14}}>
+                        <button type="button" className="cp-link" style={{marginTop:0}} onClick={()=>fileRef.current?.click()}>Trocar</button>
+                        <button type="button" className="cp-link" style={{marginTop:0,color:'var(--ink3)'}} onClick={()=>{setFotoPreview(null);setFotoBase64(null)}}>Remover</button>
+                      </span>
                     </div>
                   </div>
                 }
+              </section>
+            )}
+          </div>
+        )}
+
+        {/* ── ABA RESERVAS ── */}
+        {tab==='historico'&&(
+          <div className="cp-pane" key="historico">
+            {minhasAgs.length===0
+              ?<div className="cp-card" style={{textAlign:'center',padding:'34px 22px'}}>
+                <div style={{width:64,height:64,borderRadius:'50%',margin:'0 auto 12px',background:'linear-gradient(160deg,#f8ece1,#efd2bf)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:28}}>💅</div>
+                <div style={{fontFamily:'Noto Serif,serif',fontSize:18,fontWeight:600,marginBottom:6}}>Nenhuma reserva ainda</div>
+                <div style={{fontSize:13.5,color:'var(--ink2)',lineHeight:1.55,marginBottom:18}}>Seu primeiro momento com a Morgane está a poucos toques.</div>
+                <button className="cp-btn-ouro" onClick={()=>trocarTab('agendar')}>Agendar agora</button>
               </div>
-            )}
-
-            {err&&<div className="alert alert-danger" style={{marginBottom:12}}>{err}</div>}
-
-            {/* BOTÃO CONFIRMAR */}
-            {selProf&&selSrv&&selDmy&&selTime&&(
-              <button onClick={()=>setShowConfirm(true)}
-                style={{width:'100%',background:`linear-gradient(135deg,${PA},${P})`,color:'#fff',border:'none',
-                  borderRadius:14,padding:15,fontFamily:'Manrope,sans-serif',fontSize:12,fontWeight:800,
-                  letterSpacing:2,textTransform:'uppercase',cursor:'pointer',
-                  boxShadow:'0 4px 16px rgba(197,168,128,.4)'}}>
-                Confirmar Agendamento
-              </button>
-            )}
+              :<>
+                {proximas.length>0&&<div className="cp-sec-tt">Próximas <small>{proximas.length}</small></div>}
+                {proximas.map((a,i)=>{
+                  const si=statusInfo(a.status)
+                  return(
+                    <div key={a.id} className="cp-opcao cp-res" style={{animationDelay:`${i*45}ms`}}>
+                      <div className="cp-res-data"><div className="d">{a.dmy.slice(0,2)}</div><div className="m">{mesDoCard(a.dmy)}</div></div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <span className="cp-pill" style={{background:si.bg,color:si.color}}>{si.label}</span>
+                        <div style={{fontSize:14.5,fontWeight:800,marginTop:5,letterSpacing:'-.2px'}}>{a.srvName}</div>
+                        <div style={{fontSize:12,color:'var(--ink3)',marginTop:2}}>{a.profName} · {a.time}</div>
+                        {a.refPhoto&&<button className="cp-link" onClick={()=>setFotoPopup(a.refPhoto)}>Ver minha referência</button>}
+                      </div>
+                      <div style={{fontFamily:'Noto Serif,serif',fontSize:15,fontWeight:700,color:'var(--ouro)',flexShrink:0}}>{fmtCurrency(a.price)}</div>
+                    </div>
+                  )
+                })}
+                {anteriores.length>0&&<div className="cp-sec-tt" style={{marginTop:proximas.length?22:6}}>Anteriores</div>}
+                {anteriores.map((a,i)=>{
+                  const si=statusInfo(a.status)
+                  return(
+                    <div key={a.id} className="cp-opcao cp-res passada" style={{animationDelay:`${(proximas.length+i)*45}ms`}}>
+                      <div className="cp-res-data"><div className="d">{a.dmy.slice(0,2)}</div><div className="m">{mesDoCard(a.dmy)}</div></div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <span className="cp-pill" style={{background:si.bg,color:si.color}}>{si.label}</span>
+                        <div style={{fontSize:14,fontWeight:800,marginTop:5}}>{a.srvName}</div>
+                        <div style={{fontSize:12,color:'var(--ink3)',marginTop:2}}>{a.profName} · {a.time}</div>
+                      </div>
+                      <div style={{fontFamily:'Noto Serif,serif',fontSize:14,fontWeight:700,color:'var(--ink2)',flexShrink:0}}>{fmtCurrency(a.price)}</div>
+                    </div>
+                  )
+                })}
+              </>
+            }
+            <div className="cp-card" style={{marginTop:24}}>
+              <div style={{fontFamily:'Noto Serif,serif',fontSize:16,fontWeight:600,marginBottom:2}}>Segurança da conta</div>
+              <div style={{fontSize:12.5,color:'var(--ink3)',marginBottom:6}}>Troque sua senha quando quiser.</div>
+              <AlterarSenhaCli cliente={cliente}/>
+            </div>
           </div>
         )}
 
         {/* ── ABA SOBRE ── */}
         {tab==='sobre'&&(
-          <div>
-            {portal.sobre.intro&&portal.sobre.intro.trim()&&(
-              <div className="card" style={{padding:'20px'}}>
-                <div style={{fontFamily:'Noto Serif,serif',fontSize:19,fontWeight:600,color:T.onSurface,marginBottom:8}}>Sobre nossos serviços</div>
-                <div style={{fontSize:14,color:T.onSurfaceMed,lineHeight:1.65}}>{portal.sobre.intro}</div>
+          <div className="cp-pane" key="sobre">
+            <div className="cp-card">
+              <div className="cp-sobre-topo">
+                <div className="cp-sobre-foto"><img src={FOTO_MORGANE} alt="Morgane Faoli" decoding="async"/></div>
+                <div>
+                  <div style={{fontFamily:'Parisienne,cursive',fontSize:32,lineHeight:1.05,...GOLD_TEXT}}>Morgane Faoli</div>
+                  <div style={{fontSize:10.5,fontWeight:800,letterSpacing:3,textTransform:'uppercase',color:'var(--ouro)',marginTop:2}}>Nail Designer</div>
+                </div>
               </div>
-            )}
+              {portal.sobre.intro&&portal.sobre.intro.trim()&&<div style={{fontSize:14.5,color:'var(--ink2)',lineHeight:1.7,marginTop:16}}>{portal.sobre.intro}</div>}
+            </div>
             {portal.sobre.processo&&portal.sobre.processo.trim()&&(
-              <div className="card" style={{padding:'20px'}}>
-                <div style={{fontFamily:'Noto Serif,serif',fontSize:17,fontWeight:600,color:T.onSurface,marginBottom:14}}>Como é feito</div>
-                {portal.sobre.processo.split('\n').map(l=>l.trim()).filter(Boolean).map((l,i)=>(
-                  <div key={i} style={{display:'flex',gap:12,alignItems:'flex-start',marginBottom:12}}>
-                    <div style={{minWidth:26,height:26,borderRadius:'50%',background:`linear-gradient(135deg,${T.primaryLight},${T.primary})`,color:'#fff',fontSize:12,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{i+1}</div>
-                    <div style={{fontSize:14,color:T.onSurfaceMed,lineHeight:1.5,paddingTop:3}}>{l}</div>
-                  </div>
-                ))}
+              <div className="cp-card">
+                <div className="cp-sec-tt" style={{marginTop:0}}>Como é feito</div>
+                <div className="cp-tl">
+                  {portal.sobre.processo.split('\n').map(l=>l.trim()).filter(Boolean).map((l,i)=>(
+                    <div key={i} className="cp-tl-item" style={{animationDelay:`${i*55}ms`}}><i>{i+1}</i>{l}</div>
+                  ))}
+                </div>
               </div>
             )}
             {portal.sobre.beneficios&&portal.sobre.beneficios.trim()&&(
-              <div className="card" style={{padding:'20px'}}>
-                <div style={{fontFamily:'Noto Serif,serif',fontSize:17,fontWeight:600,color:T.onSurface,marginBottom:14}}>Benefícios</div>
+              <div className="cp-card">
+                <div className="cp-sec-tt" style={{marginTop:0}}>Benefícios</div>
                 {portal.sobre.beneficios.split('\n').map(l=>l.trim()).filter(Boolean).map((l,i)=>(
-                  <div key={i} style={{display:'flex',gap:10,alignItems:'flex-start',marginBottom:10}}>
-                    <span style={{color:T.success,fontWeight:700,flexShrink:0,fontSize:15}}>✓</span>
-                    <div style={{fontSize:14,color:T.onSurfaceMed,lineHeight:1.5}}>{l}</div>
-                  </div>
+                  <div key={i} className="cp-benef"><i>✓</i><span>{l}</span></div>
                 ))}
               </div>
             )}
             {portal.sobre.mitos&&portal.sobre.mitos.trim()&&(
-              <div className="card" style={{padding:'20px'}}>
-                <div style={{fontFamily:'Noto Serif,serif',fontSize:17,fontWeight:600,color:T.onSurface,marginBottom:14}}>Mitos & Verdades</div>
+              <div className="cp-card">
+                <div className="cp-sec-tt" style={{marginTop:0}}>Mitos & Verdades</div>
                 {portal.sobre.mitos.split('\n').map(l=>l.trim()).filter(Boolean).map((l,i)=>{
                   const partes=l.split('|')
                   const mito=partes[0].trim()
                   const verdade=partes.slice(1).join('|').trim()
                   return(
-                    <div key={i} style={{background:T.surfaceLow,borderRadius:14,padding:'14px 16px',marginBottom:10}}>
-                      <div style={{fontSize:13,fontWeight:700,color:T.nailMauve,marginBottom:verdade?5:0}}>“{mito}”</div>
-                      {verdade&&<div style={{fontSize:13.5,color:T.onSurfaceMed,lineHeight:1.55}}><b style={{color:T.success}}>Verdade: </b>{verdade}</div>}
+                    <div key={i} className="cp-mito">
+                      <div style={{fontSize:13.5,fontWeight:700,color:'#8a5c72',marginBottom:verdade?5:0,fontStyle:'italic'}}>“{mito}”</div>
+                      {verdade&&<div style={{fontSize:13.5,color:'var(--ink2)',lineHeight:1.55}}><b style={{color:'#3a7a4a'}}>Verdade: </b>{verdade}</div>}
                     </div>
                   )
                 })}
               </div>
             )}
-            <div style={{textAlign:'center',padding:'8px 0 4px'}}>
-              <button className="btn btn-primary" onClick={()=>setTab('agendar')} style={{padding:'12px 28px'}}>Agendar meu horário ✨</button>
+            <div style={{textAlign:'center',padding:'10px 0 4px'}}>
+              <button className="cp-btn-ouro" onClick={()=>trocarTab('agendar')}>Agendar meu horário ✨</button>
             </div>
           </div>
         )}
+      </main>
 
-        {/* ── ABA HISTÓRICO ── */}
-        {tab==='historico'&&(
-          <div>
-            <div className="lbl-s" style={{marginBottom:12}}>📋 Seu histórico de solicitações</div>
-            {minhasAgs.length===0
-              ?<div style={{background:'#fff',border:'1px solid #f0ede8',borderRadius:14,
-                  padding:40,textAlign:'center',color:'#aaa',fontSize:13,boxShadow:'0 1px 4px rgba(0,0,0,.04)'}}>
-                  <div style={{fontSize:32,marginBottom:8}}>📅</div>
-                  Você ainda não possui nenhum agendamento registrado.
-                </div>
-              :minhasAgs.map(a=>{
-                  const si=statusInfo(a.status)
-                  return(
-                    <div key={a.id} className="res-card" style={{flexDirection:'column',alignItems:'stretch'}}>
-                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
-                        <div style={{flex:1,minWidth:0}}>
-                          <span style={{fontSize:10,padding:'3px 8px',borderRadius:20,fontWeight:700,
-                            textTransform:'uppercase',background:si.bg,color:si.color,display:'inline-block',marginBottom:6}}>
-                            {si.label}
-                          </span>
-                          <div style={{fontSize:14,fontWeight:700,color:'#222'}}>{a.srvName}</div>
-                          <div style={{fontSize:11,color:'#aaa',marginTop:2}}>{a.profName} · {a.dmy} às {a.time}</div>
-                        </div>
-                        <div style={{fontSize:14,fontWeight:800,color:P,flexShrink:0,marginLeft:10}}>{fmtCurrency(a.price)}</div>
-                      </div>
-                      {a.status!=='completed'&&a.refPhoto&&(
-                        <button onClick={()=>setFotoPopup(a.refPhoto)}
-                          style={{marginTop:8,background:'none',border:'none',cursor:'pointer',
-                            display:'flex',alignItems:'center',gap:6,padding:0}}>
-                          <span style={{fontSize:18}}>📎</span>
-                          <span style={{fontSize:12,color:'#9A7D56',fontWeight:700,textDecoration:'underline'}}>
-                            Ver foto de referência
-                          </span>
-                        </button>
-                      )}
-                    </div>
-                  )
-                })
-            }
-            <div style={{background:'#fff',border:'1px solid #f0ede8',borderRadius:14,
-              padding:16,marginTop:20,boxShadow:'0 1px 4px rgba(0,0,0,.04)'}}>
-              <div className="lbl-s">🔒 Segurança da conta</div>
-              <AlterarSenhaCli cliente={cliente}/>
-            </div>
+      {/* BARRA FLUTUANTE — aparece quando o agendamento está completo */}
+      <div className={`cp-cta${pronto&&tab==='agendar'&&!showConfirm?' on':''}`} aria-hidden={!pronto}>
+        <div className="cp-cta-in">
+          <div className="cp-cta-txt">
+            <b>{selSrv?.name||''}</b>
+            <span>{selDmy?dataCurta(selDmy):''} · {selTime} · {fmtCurrency(selSrv?.price||0)}</span>
           </div>
-        )}
+          <button className="cp-btn-ouro" tabIndex={pronto?0:-1} onClick={()=>setShowConfirm(true)}>Agendar</button>
+        </div>
       </div>
 
-      {/* Popup Foto de Referência */}
-      {fotoPopup&&(
-        <div onClick={()=>setFotoPopup(null)}
-          style={{position:'fixed',inset:0,background:'rgba(0,0,0,.75)',zIndex:300,
-            display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
-          <div onClick={e=>e.stopPropagation()}
-            style={{background:'#fff',borderRadius:20,overflow:'hidden',maxWidth:440,width:'100%'}}>
-            <div style={{padding:'14px 18px',display:'flex',justifyContent:'space-between',alignItems:'center',
-              borderBottom:'1px solid #f0ede8'}}>
-              <span style={{fontWeight:700,fontSize:14}}>📎 Minha Referência</span>
-              <button onClick={()=>setFotoPopup(null)}
-                style={{background:'none',border:'none',cursor:'pointer',fontSize:20,color:'#aaa',padding:4}}>×</button>
-            </div>
-            <img src={fotoPopup} alt="Referência"
-              style={{width:'100%',maxHeight:460,objectFit:'contain',display:'block',background:'#fafafa'}}/>
+      {/* CONFIRMAÇÃO */}
+      <FolhaInferior aberta={showConfirm} onFechar={()=>setShowConfirm(false)} titulo="Confirmar agendamento">
+        <div style={{display:'flex',alignItems:'center',gap:14}}>
+          <div className="cp-prof-foto" style={{width:54,height:54,margin:0,fontSize:20}}>
+            {fotoDaProfissional(selProf?.full_name)?<img src={fotoDaProfissional(selProf?.full_name)} alt="" decoding="async"/>:(selProf?.full_name||'?')[0]}
+          </div>
+          <div>
+            <div style={{fontFamily:'Noto Serif,serif',fontSize:20,fontWeight:600,letterSpacing:'-.3px'}}>Confirme seu horário</div>
+            <div style={{fontSize:12.5,color:'var(--ink3)',marginTop:2}}>com {selProf?.full_name}</div>
           </div>
         </div>
-      )}
+        <div className="cp-resumo">
+          <div className="cp-resumo-l"><span>Procedimento</span><b>{selSrv?.name}</b></div>
+          <div className="cp-resumo-l"><span>Data</span><b>{selDmy?dataLonga(selDmy):''}</b></div>
+          <div className="cp-resumo-l"><span>Horário</span><b>{selTime}</b></div>
+          <div className="cp-resumo-l"><span>Valor</span><b style={{fontFamily:'Noto Serif,serif',fontSize:17,color:'var(--ouro)'}}>{fmtCurrency(selSrv?.price||0)}</b></div>
+          {fotoPreview&&<div className="cp-resumo-l"><span>Referência</span><img src={fotoPreview} alt="" style={{width:44,height:44,borderRadius:10,objectFit:'cover'}}/></div>}
+        </div>
+        <button className="cp-btn-ouro" style={{width:'100%',padding:16,fontSize:14}} onClick={confirmar} disabled={sending}>
+          {sending?'Enviando…':'Confirmar agendamento'}
+        </button>
+        <button className="cp-btn-leve" style={{width:'100%',marginTop:10}} onClick={()=>setShowConfirm(false)}>Voltar e ajustar</button>
+      </FolhaInferior>
 
-      {/* ── POPUP DE CONFIRMAÇÃO ── */}
-      {showConfirm&&(
-        <div className="overlay" onClick={()=>setShowConfirm(false)}>
-          <div className="popup" onClick={e=>e.stopPropagation()}>
-            <div style={{textAlign:'center',marginBottom:20}}>
-              <div style={{fontSize:32,marginBottom:6}}>📋</div>
-              <div style={{fontFamily:'Noto Serif,serif',fontSize:18,fontWeight:700,color:'#222'}}>Confirmar Agendamento</div>
-              <div style={{fontSize:12,color:'#aaa',marginTop:4}}>Revise os detalhes antes de enviar</div>
-            </div>
-            <div style={{background:'#fdf9f3',borderRadius:16,padding:18,marginBottom:20,border:'1px solid #f5e6c8'}}>
-              {[
-                {ic:'👤',l:'Profissional',v:selProf?.full_name},
-                {ic:'✂️',l:'Serviço',v:selSrv?.name},
-                {ic:'📅',l:'Data',v:selDmy},
-                {ic:'🕐',l:'Horário',v:selTime},
-                {ic:'💰',l:'Valor',v:fmtCurrency(selSrv?.price||0)},
-              ].map(x=>(
-                <div key={x.l} style={{display:'flex',justifyContent:'space-between',alignItems:'center',
-                  padding:'10px 0',borderBottom:'1px solid #f0e8d8'}}>
-                  <div style={{display:'flex',alignItems:'center',gap:8}}>
-                    <span style={{fontSize:15}}>{x.ic}</span>
-                    <span style={{fontSize:12,color:'#aaa',fontWeight:600}}>{x.l}</span>
-                  </div>
-                  <span style={{fontSize:13,fontWeight:700,color:'#222'}}>{x.v}</span>
-                </div>
-              ))}
-            </div>
-            {err&&<div className="alert alert-danger" style={{marginBottom:12}}>{err}</div>}
-            <div style={{display:'flex',gap:10}}>
-              <button onClick={()=>setShowConfirm(false)}
-                style={{flex:1,padding:13,background:'#f4f3f1',border:'none',borderRadius:12,
-                  fontFamily:'Manrope,sans-serif',fontSize:12,fontWeight:700,color:'#666',cursor:'pointer'}}>
-                Voltar
-              </button>
-              <button onClick={confirmar} disabled={sending}
-                style={{flex:2,padding:13,background:sending?'#ccc':`linear-gradient(135deg,${PA},${P})`,
-                  border:'none',borderRadius:12,fontFamily:'Manrope,sans-serif',fontSize:12,
-                  fontWeight:800,color:'#fff',cursor:sending?'not-allowed':'pointer',
-                  letterSpacing:1,textTransform:'uppercase',boxShadow:'0 4px 14px rgba(197,168,128,.35)'}}>
-                {sending?'Enviando…':'✓ Confirmar'}
-              </button>
-            </div>
+      {/* FOTO DE REFERÊNCIA */}
+      <FolhaInferior aberta={!!fotoPopup} onFechar={()=>setFotoPopup(null)} titulo="Minha referência">
+        <div style={{fontFamily:'Noto Serif,serif',fontSize:19,fontWeight:600,marginBottom:14}}>Minha referência</div>
+        {(fotoPopup||ultimaFotoRef.current)&&<img src={fotoPopup||ultimaFotoRef.current} alt="Referência" style={{width:'100%',maxHeight:'62dvh',objectFit:'contain',display:'block',borderRadius:18,background:'#f6f1e8'}}/>}
+      </FolhaInferior>
+
+      {/* SUCESSO */}
+      {sucesso&&(
+        <div className="cp-ok" role="status" aria-live="polite">
+          <div className="cp-ok-card">
+            <svg width="92" height="92" viewBox="0 0 60 60" aria-hidden="true" style={{display:'block',margin:'0 auto 14px'}}>
+              <defs><linearGradient id="cpOuro" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#d9b46e"/><stop offset="1" stopColor="#9A7D56"/></linearGradient></defs>
+              <circle cx="30" cy="30" r="26" fill="none" stroke="url(#cpOuro)" strokeWidth="2.5"/>
+              <path d="M18 31 l8 8 l16 -18" fill="none" stroke="url(#cpOuro)" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            <div style={{fontFamily:'Noto Serif,serif',fontSize:24,fontWeight:600,letterSpacing:'-.4px'}}>Pedido enviado!</div>
+            <div style={{fontSize:14,color:'var(--ink2)',lineHeight:1.55,marginTop:6}}>A Morgane vai confirmar seu horário em breve. Acompanhe em <b>Reservas</b>.</div>
           </div>
         </div>
       )}
-    </>
+    </div>
   )
 }
 
