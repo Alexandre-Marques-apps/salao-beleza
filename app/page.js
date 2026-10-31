@@ -3112,6 +3112,12 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[cliente.full_name])
 
+  // Só uma profissional atende? Então não há o que perguntar: ela já vem escolhida.
+  // (Se um dia entrar outra, a pergunta "Com quem?" volta sozinha.)
+  const profUnica=profs.length===1
+  useEffect(()=>{ if(profUnica&&!selProf)setSelProf(profs[0]) },[profUnica,selProf,profs])
+  const nPasso=n=>n-(profUnica?1:0)
+
   // barra de status do celular na cor do topo do portal
   useEffect(()=>{
     let m=document.querySelector('meta[name="theme-color"]')
@@ -3354,11 +3360,6 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
 
     .cp-profs{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;}
     .cp-prof{padding:18px 10px 16px;text-align:center;}
-    .cp-profs.solo{grid-template-columns:1fr;}
-    .cp-profs.solo .cp-prof{display:flex;align-items:center;gap:16px;text-align:left;padding:14px 18px;}
-    .cp-profs.solo .cp-prof-foto{margin:0;width:66px;height:66px;}
-    .cp-profs.solo .cp-prof-nome{font-size:17px;}
-    .cp-profs.solo .cp-check{top:50%;margin-top:-11px;right:18px;}
     .cp-prof-foto{width:68px;height:68px;border-radius:50%;margin:0 auto 10px;overflow:hidden;display:flex;align-items:center;justify-content:center;
       background:linear-gradient(135deg,#f3e7d6,#e9d6bc);font-family:'Noto Serif',serif;font-size:24px;font-weight:700;color:var(--ouro);
       box-shadow:0 0 0 3px #fffdf9,0 0 0 4.5px rgba(197,168,128,.55),0 8px 18px rgba(154,125,86,.22);}
@@ -3574,10 +3575,11 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
 
             {err&&<div className="alert alert-danger" style={{marginBottom:18}}>{err}</div>}
 
-            {/* 1. PROFISSIONAL */}
+            {/* 1. PROFISSIONAL — só quando há mais de uma */}
+            {profs.length>1&&(
             <section className="cp-passo">
               {cabecalhoPasso(1,!!selProf,'Com quem?')}
-              <div className={`cp-profs${profs.length===1?' solo':''}`}>
+              <div className="cp-profs">
                 {profs.map(p=>{
                   const foto=fotoDaProfissional(p.full_name)
                   return(
@@ -3591,13 +3593,14 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
                 })}
               </div>
             </section>
+            )}
 
             {/* 2. SERVIÇO */}
             {selProf&&(
               <section className="cp-passo" ref={passoSrvRef}>
-                {cabecalhoPasso(2,!!selSrv,'Qual procedimento?')}
+                {cabecalhoPasso(nPasso(2),!!selSrv,'Qual procedimento?')}
                 {srvsDoProf.length===0
-                  ?<div className="cp-vazio">Nenhum serviço disponível para esta profissional</div>
+                  ?<div className="cp-vazio">{profUnica?'Nenhum serviço disponível no momento':'Nenhum serviço disponível para esta profissional'}</div>
                   :srvsDoProf.map(s=>(
                     <button key={s.id} type="button" className={`cp-opcao cp-srv${selSrv?.id===s.id?' sel':''}`}
                       onClick={()=>{setSelSrv(s);setSelTime('');setErr('');if(!isDiaAberto(selDmy))setSelDmy(primeiroDiaAberto());rolarAte(passoDataRef)}}>
@@ -3616,7 +3619,7 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
             {/* 3. DATA */}
             {selSrv&&(
               <section className="cp-passo" ref={passoDataRef}>
-                {cabecalhoPasso(3,!!selDmy,'Quando?')}
+                {cabecalhoPasso(nPasso(3),!!selDmy,'Quando?')}
                 <div className="cp-dias">
                   {dias.map(d=>(
                     <button key={d.dmy} type="button" disabled={!d.aberto} className={`cp-opcao cp-dia${selDmy===d.dmy?' sel':''}`}
@@ -3638,7 +3641,7 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
             {/* 4. HORÁRIO */}
             {selSrv&&selDmy&&(
               <section className="cp-passo" key={selDmy}>
-                {cabecalhoPasso(4,!!selTime,'Que horas?',slotsLivres.length?`${slotsLivres.length} livres`:'')}
+                {cabecalhoPasso(nPasso(4),!!selTime,'Que horas?',slotsLivres.length?`${slotsLivres.length} livres`:'')}
                 {slotsLivres.length===0
                   ?<div className="cp-vazio">{isDiaAberto(selDmy)?'Nenhum horário livre nesta data. Que tal outro dia?':'O salão não abre neste dia. Escolha outra data.'}</div>
                   :turnos.map(([nome,lista])=>(
@@ -3658,7 +3661,7 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
             {/* 5. FOTO (opcional) */}
             {selTime&&(
               <section className="cp-passo">
-                {cabecalhoPasso(5,!!fotoPreview,'Tem uma referência?','opcional')}
+                {cabecalhoPasso(nPasso(5),!!fotoPreview,'Tem uma referência?','opcional')}
                 <input ref={fileRef} type="file" accept="image/*" style={{display:'none'}} onChange={handleFoto}/>
                 {!fotoPreview
                   ?<div className="cp-upload" role="button" tabIndex={0} onClick={()=>fileRef.current?.click()} onKeyDown={e=>e.key==='Enter'&&fileRef.current?.click()}>
