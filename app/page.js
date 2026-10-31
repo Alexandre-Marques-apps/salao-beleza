@@ -4425,20 +4425,16 @@ export default function App(){
     if(typeof window==='undefined'||!window.Capacitor)return
     ;(async()=>{
       try{
-        const mode=localStorage.getItem('salao_mode')
-        if(!mode)return
+        // só registra se houver alguém logado (o servidor diz quem é)
+        const sess=await fetch('/api/session',{cache:'no-store'}).then(r=>r.json()).catch(()=>null)
+        if(!sess?.ok||sess.perfil==='mesa')return
         const {PushNotifications}=await import('@capacitor/push-notifications')
         const perm=await PushNotifications.requestPermissions()
         if(perm.receive!=='granted')return
         await PushNotifications.register()
         PushNotifications.addListener('registration',async(token)=>{
-          let ownerId=null
           try{
-            if(mode==='profissional')ownerId=JSON.parse(localStorage.getItem('salao_prof')||'{}').id
-            if(mode==='cliente')ownerId=JSON.parse(localStorage.getItem('salao_cli')||'{}').id
-          }catch{}
-          try{
-            await fetch('/api/push/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:token.value,role:mode,ownerId})})
+            await fetch('/api/push/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:token.value})})
           }catch{}
         })
       }catch{}

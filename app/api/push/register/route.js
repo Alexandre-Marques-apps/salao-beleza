@@ -1,27 +1,23 @@
-import { createClient } from '@supabase/supabase-js'
+import { getSupabase } from '../../../../lib/db.js'
+import { getSessao, json } from '../../../../lib/session.js'
 
-function getSupabase() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_KEY
-  )
-}
-
+// Registra o token de notificação do aparelho para QUEM ESTÁ LOGADO.
+// Perfil e dono vêm do crachá de sessão — nunca do que o aparelho diz.
 export async function POST(req) {
+  const s = getSessao(req)
+  if (!s || s.mc || s.p === 'mesa') return json({ ok: false, erro: 'Faça login' }, { status: 401 })
   try {
-    const { token, role, ownerId } = await req.json()
-    if (!token || !role) {
-      return Response.json({ error: 'token e role são obrigatórios' }, { status: 400 })
+    const { token } = await req.json()
+    if (!token || typeof token !== 'string' || token.length > 4096) {
+      return json({ ok: false, erro: 'token inválido' }, { status: 400 })
     }
-
-    const supabase = getSupabase()
-    const { error } = await supabase
+    const ownerId = s.k === 'prof' || s.k === 'cli' ? s.id : null
+    const { error } = await getSupabase()
       .from('push_tokens')
-      .upsert({ token, role, owner_id: ownerId ?? null }, { onConflict: 'token' })
-
+      .upsert({ token, role: s.p, owner_id: ownerId }, { onConflict: 'token' })
     if (error) throw error
-    return Response.json({ ok: true })
+    return json({ ok: true })
   } catch (e) {
-    return Response.json({ error: e.message }, { status: 500 })
+    return json({ ok: false, erro: 'Não consegui registrar' }, { status: 500 })
   }
 }
