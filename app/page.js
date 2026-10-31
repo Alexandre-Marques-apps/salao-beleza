@@ -3269,11 +3269,12 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
     .cp-root input,.cp-root select,.cp-root textarea,.cp-root .inp{font-size:16px;}
 
     /* ── Cabeçalho: vidro fosco sobre a foto ── */
-    .cp-hdr{position:fixed;top:0;left:0;right:0;z-index:120;padding-top:env(safe-area-inset-top,0px);
-      background:rgba(251,248,243,.6);-webkit-backdrop-filter:blur(18px) saturate(170%);backdrop-filter:blur(18px) saturate(170%);
-      transition:background .35s var(--saida),box-shadow .35s var(--saida);}
-    .cp-hdr.solid{background:rgba(251,248,243,.86);box-shadow:0 1px 0 var(--hair),0 10px 30px rgba(70,45,15,.06);}
-    .cp-hdr-in{max-width:480px;margin:0 auto;height:58px;padding:0 18px;display:flex;align-items:center;justify-content:space-between;}
+    .cp-hdr{position:fixed;top:0;left:0;right:0;z-index:120;padding-top:env(safe-area-inset-top,0px);}
+    .cp-hdr::before{content:'';position:absolute;inset:0;z-index:-1;pointer-events:none;opacity:0;
+      background:rgba(251,248,243,.84);-webkit-backdrop-filter:blur(18px) saturate(170%);backdrop-filter:blur(18px) saturate(170%);
+      box-shadow:0 1px 0 var(--hair),0 10px 30px rgba(70,45,15,.06);transition:opacity .35s var(--saida);}
+    .cp-hdr.solid::before{opacity:1;}
+    .cp-hdr-in{max-width:520px;margin:0 auto;height:58px;padding:0 18px;display:flex;align-items:center;justify-content:space-between;}
     .cp-av{width:38px;height:38px;border-radius:50%;flex-shrink:0;background:linear-gradient(135deg,var(--ouro2),var(--ouro));display:flex;align-items:center;justify-content:center;
       font-family:'Noto Serif',serif;font-weight:700;font-size:16px;color:#fff;box-shadow:0 4px 12px rgba(154,125,86,.35),inset 0 1px 0 rgba(255,255,255,.35);}
     .cp-ola{font-size:11px;color:var(--ink2);font-weight:600;}
@@ -3283,15 +3284,20 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
     .cp-sair:active{transform:scale(.94);}
 
     /* ── Topo: a Morgane se dissolvendo no fundo ── */
-    .cp-hero{position:relative;max-width:480px;margin:0 auto;height:min(60svh,440px);overflow:hidden;}
-    .cp-hero-brilho{position:absolute;inset:0;background:radial-gradient(70% 55% at 60% 36%,rgba(226,181,105,.30),transparent 72%),radial-gradient(60% 45% at 8% 88%,rgba(238,199,179,.55),transparent 70%),radial-gradient(55% 40% at 95% 80%,rgba(238,199,179,.40),transparent 70%);}
-    .cp-hero-media{position:absolute;inset:0;animation:cp-materializa 1.2s var(--saida) both;}
+    .cp-hero{position:relative;width:100%;height:440px;height:clamp(380px,56svh,500px);overflow:hidden;}
+    .cp-hero-brilho{position:absolute;inset:0;background:radial-gradient(60% 52% at 50% 36%,rgba(226,181,105,.28),transparent 72%),radial-gradient(46% 40% at 0% 92%,rgba(238,199,179,.50),transparent 72%),radial-gradient(46% 40% at 100% 86%,rgba(238,199,179,.38),transparent 72%);}
+    .cp-hero-media{position:absolute;top:calc(env(safe-area-inset-top,0px) + 40px);bottom:0;left:0;right:0;margin:0 auto;width:min(100%,540px);animation:cp-materializa 1.2s var(--saida) both;}
     .cp-hero-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 16%;
-      -webkit-mask-image:radial-gradient(64% 76% at 50% 38%,#000 52%,transparent 100%);mask-image:radial-gradient(64% 76% at 50% 38%,#000 52%,transparent 100%);
+      -webkit-mask-image:radial-gradient(72% 80% at 50% 40%,#000 50%,transparent 100%);mask-image:radial-gradient(72% 80% at 50% 40%,#000 50%,transparent 100%);
       transform:translate3d(0,calc(var(--sy,0) * .32px),0) scale(calc(1 + var(--sy,0) * .00025));opacity:calc(1 - var(--sy,0) / 560);will-change:transform,opacity;}
+    @media (min-width:541px){
+      .cp-hero-img{-webkit-mask-image:radial-gradient(ellipse 50% 68% at 50% 40%,#000 52%,transparent 100%);mask-image:radial-gradient(ellipse 50% 68% at 50% 40%,#000 52%,transparent 100%);}
+    }
+    .cp-hero-topo{position:absolute;left:0;right:0;top:0;height:calc(128px + env(safe-area-inset-top,0px));pointer-events:none;
+      background:linear-gradient(to bottom,#FBF8F3 0%,#FBF8F3 36%,rgba(251,248,243,0) 100%);}
     .cp-hero-luz{position:absolute;inset:0;pointer-events:none;mix-blend-mode:soft-light;background:radial-gradient(70% 50% at 72% 14%,rgba(255,214,150,.55),transparent 70%);}
     .cp-hero-veu{position:absolute;inset:0;pointer-events:none;background:linear-gradient(to bottom,rgba(251,248,243,0) 58%,rgba(251,248,243,.72) 80%,#FBF8F3 97%);}
-    .cp-hero-txt{position:relative;z-index:2;max-width:480px;margin:-86px auto 0;padding:0 20px;text-align:center;}
+    .cp-hero-txt{position:relative;z-index:2;max-width:520px;margin:-86px auto 0;padding:0 20px;text-align:center;}
     .cp-eyebrow{font-size:10px;font-weight:800;letter-spacing:5px;text-transform:uppercase;color:var(--ouro);animation:cp-sobe .9s .35s var(--saida) both;}
     .cp-assinatura{font-family:'Parisienne',cursive;font-size:56px;line-height:1.08;margin:2px 0 0;animation:cp-sobe 1s .45s var(--saida) both;
       background:linear-gradient(135deg,#d9b46e 0%,#b8862f 48%,#8e6420 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:#a9781f;}
@@ -3300,7 +3306,7 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
     @keyframes cp-sobe{from{opacity:0;transform:translate3d(0,10px,0)}to{opacity:1;transform:none}}
     @keyframes cp-entra{from{opacity:0;transform:translate3d(0,14px,0)}to{opacity:1;transform:none}}
 
-    .cp-main{max-width:480px;margin:0 auto;padding:4px 18px 48px;transition:padding-bottom .4s var(--mola);}
+    .cp-main{max-width:520px;margin:0 auto;padding:4px 18px 48px;transition:padding-bottom .4s var(--mola);}
     .cp-main.com-cta{padding-bottom:132px;}
 
     /* ── Abas: controle segmentado com pílula deslizante ── */
@@ -3397,7 +3403,7 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
       transform:translate3d(0,130%,0);opacity:0;transition:transform .55s var(--mola),opacity .3s ease;}
     .cp-cta.on{transform:none;opacity:1;}
     .cp-cta.on .cp-cta-in{pointer-events:auto;}
-    .cp-cta-in{max-width:452px;margin:0 auto;display:flex;align-items:center;gap:12px;padding:10px 10px 10px 18px;border-radius:24px;
+    .cp-cta-in{max-width:492px;margin:0 auto;display:flex;align-items:center;gap:12px;padding:10px 10px 10px 18px;border-radius:24px;
       background:rgba(255,253,249,.80);-webkit-backdrop-filter:blur(22px) saturate(180%);backdrop-filter:blur(22px) saturate(180%);
       border:1px solid rgba(255,255,255,.75);box-shadow:0 20px 50px rgba(70,45,15,.22),inset 0 1px 0 rgba(255,255,255,.85);}
     .cp-cta-txt{flex:1;min-width:0;}
@@ -3418,7 +3424,7 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
     /* ── Folha inferior ── */
     .cp-veu{position:fixed;inset:0;z-index:300;background:rgba(36,24,12,.42);opacity:0;transition:opacity .45s var(--mola);}
     .cp-veu.on{opacity:1;}
-    .cp-folha{position:fixed;left:0;right:0;bottom:0;margin:0 auto;max-width:480px;z-index:301;max-height:88dvh;overflow-y:auto;overscroll-behavior:contain;
+    .cp-folha{position:fixed;left:0;right:0;bottom:0;margin:0 auto;max-width:520px;z-index:301;max-height:88dvh;overflow-y:auto;overscroll-behavior:contain;
       background:rgba(255,253,249,.94);-webkit-backdrop-filter:blur(26px) saturate(180%);backdrop-filter:blur(26px) saturate(180%);
       border-radius:30px 30px 0 0;border-top:1px solid rgba(255,255,255,.8);box-shadow:0 -24px 70px rgba(70,45,15,.28);
       padding:0 22px calc(22px + env(safe-area-inset-bottom,0px));transform:translate3d(0,100%,0);transition:transform .46s var(--mola);}
@@ -3475,7 +3481,7 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
       .cp-hero-img,.cp-hero-txt{transform:none!important;opacity:1!important;}
     }
     @media (prefers-reduced-transparency:reduce){
-      .cp-hdr,.cp-cta-in,.cp-folha,.cp-ok{background:#fffdf9!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;}
+      .cp-hdr::before,.cp-cta-in,.cp-folha,.cp-ok{background:#fffdf9!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;}
     }
   `
 
@@ -3514,6 +3520,7 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
         </div>
         <div className="cp-hero-luz"/>
         <div className="cp-hero-veu"/>
+        <div className="cp-hero-topo"/>
       </div>
       <div className="cp-hero-txt">
         <div className="cp-eyebrow">Sua Nail Designer</div>
