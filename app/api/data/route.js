@@ -191,6 +191,12 @@ async function insert(supabase, ctx, b) {
       .eq('professional_name', prof.full_name).eq('booking_date', data).neq('status', 'cancelled')
     const ocupados = (doDia || []).filter(a => { const i = toMin(a.start_time || '00:00'); return ini < i + (Number(a.duration_min) || 30) && fim > i }).length
     if (ocupados >= (prof.tipo === 'cabelereiro' ? 2 : 1)) return negado('Esse horário acabou de ser ocupado. Escolha outro, por favor.', 409)
+    // agenda fechada pela profissional nesse período (médico, folga…)
+    const { data: bloqueios } = await supabase.from('salon_blocks').select('start_time,end_time')
+      .eq('professional_name', prof.full_name).eq('block_date', data)
+    if ((bloqueios || []).some(bl => ini < toMin(bl.end_time || '00:00') && fim > toMin(bl.start_time || '00:00'))) {
+      return negado('Esse horário não está mais disponível. Escolha outro, por favor.', 409)
+    }
 
     const linha = {
       client_name: ctx.nome, service_name: srv.name, professional_name: prof.full_name,

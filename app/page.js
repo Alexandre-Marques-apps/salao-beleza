@@ -790,6 +790,92 @@ function Admin({onLogout,onMesa,salonName='Morgane Faoli Nail Style',adminName='
     })
   }
 
+  // bloqueio que cobre este horário (para mostrar o motivo na grade)
+  const blocoEm=(h,nom)=>{
+    const dateISO=dmyToISO(agDate)
+    return blocks.find(b=>b.professional_name===nom&&b.block_date===dateISO&&h>=(b.start_time||'').slice(0,5)&&h<(b.end_time||'').slice(0,5))
+  }
+
+  // ── FECHAR AGENDA ────────────────────────────────
+  // Fecha um período (médico, folga, férias…). Cada dia vira uma linha em
+  // salon_blocks — é assim que a grade, o portal da cliente e o totem já
+  // leem os bloqueios. Linhas gravadas juntas saem com o mesmo created_at
+  // e motivo, então aparecem (e são reabertas) como um fechamento só.
+  const hojeISO=dmyToISO(todayStr())
+  const isoLocal=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+  function diasDoPeriodo(deISO,ateISO){
+    const out=[];if(!deISO||!ateISO||ateISO<deISO)return out
+    const d=new Date(deISO+'T12:00:00'),f=new Date(ateISO+'T12:00:00')
+    while(d<=f&&out.length<=92){out.push(isoLocal(d));d.setDate(d.getDate()+1)}
+    return out
+  }
+  // vários dias: no 1º dia fecha a partir do horário inicial, no último até o final
+  function linhasFechamento(fm){
+    const dias=diasDoPeriodo(fm.de,fm.ate)
+    return dias.map((iso,i)=>({
+      professional_name:fm.prof,block_date:iso,
+      start_time:(fm.diaTodo||i>0?'00:00':fm.hIni)+':00',
+      end_time:(fm.diaTodo||i<dias.length-1?'23:59':fm.hFim)+':00',
+      reason:(fm.motivo||'').trim()||null,
+    }))
+  }
+  const fechamentoCompleto=fm=>!!(fm.prof&&fm.de&&fm.ate&&fm.ate>=fm.de&&(fm.diaTodo||(fm.hIni&&fm.hFim&&(fm.de!==fm.ate||fm.hFim>fm.hIni))))
+  // horários já marcados dentro do período (continuam na agenda — ela decide se remarca)
+  function conflitosFechamento(fm){
+    if(!fechamentoCompleto(fm))return[]
+    const linhas=linhasFechamento(fm)
+    return ags.filter(a=>a.professional_name===fm.prof&&(a.status==='scheduled'||a.status==='pending')&&linhas.some(l=>{
+      if(l.block_date!==a.booking_date)return false
+      const ini=toMin((a.start_time||'').slice(0,5)),fim=ini+(Number(a.duration_min)||30)
+      return ini<toMin(l.end_time.slice(0,5))&&fim>toMin(l.start_time.slice(0,5))
+    })).sort((x,y)=>(x.booking_date+x.start_time).localeCompare(y.booking_date+y.start_time))
+  }
+  // junta as linhas de um mesmo fechamento e mostra só os que ainda não passaram
+  const fechamentos=Object.values(blocks.reduce((acc,b)=>{
+    const k=[b.professional_name,b.reason||'',b.created_at||b.id].join('|')
+    ;(acc[k]=acc[k]||[]).push(b);return acc
+  },{})).map(ls=>{
+    ls.sort((x,y)=>(x.block_date+x.start_time).localeCompare(y.block_date+y.start_time))
+    const pri=ls[0],ult=ls[ls.length-1]
+    return{ids:ls.map(l=>l.id),prof:pri.professional_name,motivo:pri.reason||'',de:pri.block_date,ate:ult.block_date,
+      hIni:(pri.start_time||'').slice(0,5),hFim:(ult.end_time||'').slice(0,5)}
+  }).filter(f=>f.ate>=hojeISO).sort((x,y)=>(x.de+x.hIni).localeCompare(y.de+y.hIni))
+  const ddmm=iso=>iso.slice(8,10)+'/'+iso.slice(5,7)
+  const diaSem=iso=>{const t=new Date(iso+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short'}).replace('.','');return t.charAt(0).toUpperCase()+t.slice(1)}
+  function descFechamento(f){
+    const inteiro=f.hIni==='00:00'&&f.hFim==='23:59'
+    if(f.de===f.ate)return `${diaSem(f.de)}, ${ddmm(f.de)} · ${inteiro?'dia inteiro':`das ${f.hIni} às ${f.hFim}`}`
+    if(inteiro)return `${diaSem(f.de)}, ${ddmm(f.de)} a ${diaSem(f.ate)}, ${ddmm(f.ate)} · dias inteiros`
+    return `De ${ddmm(f.de)}${f.hIni==='00:00'?'':' às '+f.hIni} até ${ddmm(f.ate)}${f.hFim==='23:59'?' (fim do dia)':' às '+f.hFim}`
+  }
+  function abrirFechamento(){
+    const ag=dmyToISO(agDate),de=ag&&ag>=hojeISO?ag:hojeISO
+    openM('fechar',{prof:profs.length===1?profs[0].full_name:'',de,ate:de,diaTodo:false,hIni:'',hFim:'',motivo:''})
+  }
+  async function salvarFechamento(){
+    setFerr('')
+    const fm=form
+    if(!fm.prof){setFerr('Escolha a profissional.');return}
+    if(!fm.de||!fm.ate){setFerr('Informe a data.');return}
+    if(fm.ate<fm.de){setFerr('A data final está antes da inicial.');return}
+    if(fm.ate<hojeISO){setFerr('Esse período já passou.');return}
+    if(diasDoPeriodo(fm.de,fm.ate).length>90){setFerr('Feche no máximo 90 dias de cada vez.');return}
+    if(!fm.diaTodo){
+      if(!fm.hIni||!fm.hFim){setFerr('Informe das que horas até que horas — ou marque "Dia inteiro".');return}
+      if(fm.de===fm.ate&&fm.hFim<=fm.hIni){setFerr('O horário final precisa ser depois do inicial.');return}
+    }
+    const{error}=await supabase.from('salon_blocks').insert(linhasFechamento(fm))
+    if(error){setFerr('Não consegui fechar a agenda: '+error.message);return}
+    closeM();toast2('Agenda fechada nesse período');load()
+  }
+  async function reabrirFechamento(f){
+    if(!window.confirm(`Reabrir a agenda (${descFechamento(f)})?`))return
+    const rs=await Promise.all(f.ids.map(id=>supabase.from('salon_blocks').delete().eq('id',id)))
+    if(rs.some(r=>r.error))toast2('Não consegui reabrir tudo. Tente de novo.',false)
+    else toast2('Agenda reaberta')
+    load()
+  }
+
   // ── CRUD ─────────────────────────────────────────
   async function saveAg(){
     setFerr('')
@@ -1274,8 +1360,15 @@ function Admin({onLogout,onMesa,salonName='Morgane Faoli Nail Style',adminName='
                       🚫 Salão fechado neste dia
                     </span>
                   )}
+                  {isDiaAberto(agDate)&&(()=>{
+                    const doDia=blocks.filter(b=>b.block_date===dmyToISO(agDate)).sort((x,y)=>(x.start_time||'').localeCompare(y.start_time||''))
+                    if(!doDia.length)return null
+                    const txt=doDia.map(b=>{const i=(b.start_time||'').slice(0,5),f=(b.end_time||'').slice(0,5);return i==='00:00'&&f==='23:59'?'dia inteiro':`${i}–${f}`}).join(', ')
+                    return <span style={{padding:'5px 12px',background:'#fbeaea',color:'#b33a3a',borderRadius:8,fontSize:11,fontWeight:700}}>🚫 Agenda fechada: {txt}</span>
+                  })()}
                 </div>
                 <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                  <button className="btn btn-ghost btn-sm" onClick={abrirFechamento}>🚫 Fechar agenda</button>
                   <button className="btn btn-ghost btn-sm" onClick={()=>openM('encaixe',{client_name:'',service_name:'',professional_name:'',dmy:agDate,time:'',paid_val:'',payment_method:'cash'})}>+ Encaixe</button>
                   <button className="btn btn-primary btn-sm" onClick={()=>openM('ag',{client_name:'',service_name:'',professional_name:'',dmy:agDate,time:'',profFix:false})}>+ Agendar</button>
                 </div>
@@ -1312,11 +1405,17 @@ function Admin({onLogout,onMesa,salonName='Morgane Faoli Nail Style',adminName='
                           const bg=done?T.successPale:T.primaryPale
                           const fc=done?T.success:T.primary
                           if(grey)return<td key={p.id} className="grey"/>
-                          if(blocked&&!cel)return(
-                            <td key={p.id} style={{background:'#f0f0f0',cursor:'default'}}>
-                              <div style={{width:'100%',height:'100%',minHeight:32,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,color:'#aaa',fontWeight:600}}>🚫</div>
-                            </td>
-                          )
+                          if(blocked&&!cel){
+                            const blk=blocoEm(h,p.full_name)
+                            const primeiro=blk&&((blk.start_time||'').slice(0,5)===h||h===hi)
+                            return(
+                              <td key={p.id} style={{background:'#f3eeee',cursor:'default'}} title={blk?.reason||'Agenda fechada'}>
+                                <div style={{width:'100%',height:'100%',minHeight:32,display:'flex',alignItems:'center',justifyContent:'center',gap:4,fontSize:10,color:'#a35b5b',fontWeight:700}}>
+                                  🚫{primeiro&&<span>{blk.reason||'Fechado'}</span>}
+                                </div>
+                              </td>
+                            )
+                          }
                           return(
                             <td key={p.id} className={free?'free':''}
                               onClick={()=>{if(!free)return;openM('ag',{client_name:'',service_name:'',professional_name:p.full_name,dmy:agDate,time:h,profFix:true})}}>
@@ -1370,6 +1469,28 @@ function Admin({onLogout,onMesa,salonName='Morgane Faoli Nail Style',adminName='
                 ))}
               </div>}
             </div>
+
+            {/* Períodos com a agenda fechada */}
+            {fechamentos.length>0&&(
+              <div className="card au2">
+                <div className="card-hd">
+                  <span className="ch">🚫 Agenda fechada</span>
+                  <button className="btn btn-ghost btn-sm" onClick={abrirFechamento}>+ Fechar outro período</button>
+                </div>
+                <div style={{padding:'0 14px 14px'}}>
+                  {fechamentos.map(f=>(
+                    <div key={f.ids[0]} className="ag-card">
+                      <div className="tp" style={{background:'#fbeaea',fontSize:20}}>🚫</div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13,fontWeight:700}}>{descFechamento(f)}</div>
+                        <div style={{fontSize:11,color:T.onSurfaceLow}}>{f.motivo||'Sem motivo informado'}{profs.length>1?` · ${f.prof}`:''}</div>
+                      </div>
+                      <button className="btn btn-ghost btn-sm" onClick={()=>reabrirFechamento(f)}>Reabrir</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </>)}
 
           {/* ══ SOLICITAÇÕES ══ */}
@@ -1808,6 +1929,71 @@ function Admin({onLogout,onMesa,salonName='Morgane Faoli Nail Style',adminName='
           </div>
         </Modal>
       )}
+
+      {/* Fechar a agenda num período */}
+      {modal==='fechar'&&(()=>{
+        const varios=form.de&&form.ate&&form.ate>form.de
+        const conf=conflitosFechamento(form)
+        const fimOpts=SLOTS.filter(h=>varios||!form.hIni||h>form.hIni)
+        const FF=k=>v=>{setFerr('');F(k)(v)} // mexeu no formulário → some o aviso antigo
+        return(
+          <Modal title="Fechar agenda" onClose={closeM}>
+            <Alert type="amber" c="🚫 No período fechado ninguém consegue marcar horário — nem pelo app, nem pelo totem."/>
+            {profs.length>1&&(<>
+              <Lbl c="Profissional *"/>
+              <Sel v={form.prof} set={FF('prof')}><option value="">Selecionar…</option>{profs.map(p=><option key={p.id}>{p.full_name}</option>)}</Sel>
+            </>)}
+            <div style={{display:'flex',gap:10}}>
+              <div style={{flex:1,minWidth:0}}>
+                <Lbl c="De *"/>
+                <input type="date" className="inp" min={hojeISO} value={form.de||''}
+                  onChange={e=>{const v=e.target.value;setFerr('');setForm(f=>({...f,de:v,ate:(!f.ate||f.ate<v||f.ate===f.de)?v:f.ate}))}}/>
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <Lbl c="Até *"/>
+                <input type="date" className="inp" min={form.de||hojeISO} value={form.ate||''} onChange={e=>FF('ate')(e.target.value)}/>
+              </div>
+            </div>
+            <label style={{display:'flex',alignItems:'center',gap:10,margin:'16px 0 2px',fontSize:13,fontWeight:600,color:T.onSurface,cursor:'pointer'}}>
+              <input type="checkbox" checked={!!form.diaTodo} onChange={e=>FF('diaTodo')(e.target.checked)} style={{width:20,height:20,accentColor:T.primary}}/>
+              {varios?'Dias inteiros':'Dia inteiro'}
+            </label>
+            {!form.diaTodo&&(
+              <div style={{display:'flex',gap:10}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <Lbl c={varios?'A partir de (no 1º dia) *':'Das *'}/>
+                  <Sel v={form.hIni||''} set={FF('hIni')}><option value="">—</option>{SLOTS.slice(0,-1).map(h=><option key={h}>{h}</option>)}</Sel>
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <Lbl c={varios?'Até (no último dia) *':'Às *'}/>
+                  <Sel v={form.hFim||''} set={FF('hFim')}><option value="">—</option>{fimOpts.map(h=><option key={h}>{h}</option>)}</Sel>
+                </div>
+              </div>
+            )}
+            <Lbl c="Motivo (só você vê)"/>
+            <Inp v={form.motivo} set={FF('motivo')} ph="Ex.: médico, folga, férias"/>
+            {fechamentoCompleto(form)&&(
+              <div style={{marginTop:16,padding:'12px 14px',borderRadius:12,background:T.surfaceLow,fontSize:13,color:T.onSurface}}>
+                Vai fechar: <strong>{descFechamento({de:form.de,ate:form.ate,hIni:form.diaTodo?'00:00':form.hIni,hFim:form.diaTodo?'23:59':form.hFim})}</strong>
+              </div>
+            )}
+            {conf.length>0&&(
+              <Alert type="danger" c={<>
+                <strong>⚠️ Já {conf.length===1?'tem 1 horário marcado':`tem ${conf.length} horários marcados`} nesse período:</strong>
+                {conf.map(a=>(
+                  <div key={a.id} style={{marginTop:4}}>{ddmm(a.booking_date)} às {(a.start_time||'').slice(0,5)} — {a.client_name} ({a.service_name}){a.status==='pending'?' · pedido aguardando':''}</div>
+                ))}
+                <div style={{marginTop:6,fontSize:11,opacity:.85}}>{conf.length===1?'Ele continua':'Eles continuam'} na agenda: remarque ou cancele depois.</div>
+              </>}/>
+            )}
+            {ferr&&<Alert type="danger" c={ferr}/>}
+            <div style={{display:'flex',gap:10,marginTop:20}}>
+              <button className="btn btn-primary" style={{flex:1,background:'linear-gradient(135deg,#b33a3a,#8e2c2c)'}} onClick={salvarFechamento}>🚫 Fechar agenda</button>
+              <button className="btn btn-ghost" onClick={closeM}>Cancelar</button>
+            </div>
+          </Modal>
+        )
+      })()}
 
       {/* Fechar atendimento */}
       {modal==='close'&&(
@@ -3203,6 +3389,16 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
   // Serviços filtrados pelo tipo do profissional selecionado
   const srvsDoProf=selProf?srvs.filter(s=>!selProf.tipo||s.tipo===selProf.tipo||!s.tipo):srvs
 
+  // a agenda da profissional está fechada o dia todo? (nenhum horário do salão fica livre)
+  const diaFechadoProf=dmy=>{
+    if(!selProf)return false
+    const iso=dmyToISO(dmy)
+    const bl=todosBlocks.filter(b=>b.professional_name===selProf.full_name&&b.block_date===iso)
+    if(!bl.length)return false
+    const hi=(selProf.schedule_start||'08:00').slice(0,5),hf=(selProf.schedule_end||'18:00').slice(0,5)
+    return !getSalonSlots(dmy).some(h=>h>=hi&&h<hf&&!bl.some(b=>h>=(b.start_time||'').slice(0,5)&&h<(b.end_time||'').slice(0,5)))
+  }
+
   // próximos 30 dias para a faixa de datas
   const dias=[]
   {
@@ -3210,7 +3406,7 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
     for(let i=0;i<30;i++){
       const x=new Date(base);x.setDate(base.getDate()+i)
       const dmy=`${String(x.getDate()).padStart(2,'0')}/${String(x.getMonth()+1).padStart(2,'0')}/${x.getFullYear()}`
-      dias.push({dmy,n:x.getDate(),sem:i===0?'hoje':x.toLocaleDateString('pt-BR',{weekday:'short'}).replace('.',''),mes:x.toLocaleDateString('pt-BR',{month:'short'}).replace('.',''),aberto:isDiaAberto(dmy)})
+      dias.push({dmy,n:x.getDate(),sem:i===0?'hoje':x.toLocaleDateString('pt-BR',{weekday:'short'}).replace('.',''),mes:x.toLocaleDateString('pt-BR',{month:'short'}).replace('.',''),aberto:isDiaAberto(dmy)&&!diaFechadoProf(dmy)})
     }
   }
   const primeiroDiaAberto=()=>(dias.find(d=>d.aberto)||{dmy:todayStr()}).dmy
@@ -3694,7 +3890,7 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
               <section className="cp-passo" key={selDmy}>
                 {cabecalhoPasso(nPasso(4),!!selTime,'Que horas?',slotsLivres.length?`${slotsLivres.length} livres`:'')}
                 {slotsLivres.length===0
-                  ?<div className="cp-vazio">{isDiaAberto(selDmy)?'Nenhum horário livre nesta data. Que tal outro dia?':'O salão não abre neste dia. Escolha outra data.'}</div>
+                  ?<div className="cp-vazio">{!isDiaAberto(selDmy)?'O salão não abre neste dia. Escolha outra data.':diaFechadoProf(selDmy)?'A agenda está fechada neste dia. Escolha outra data.':'Nenhum horário livre nesta data. Que tal outro dia?'}</div>
                   :turnos.map(([nome,lista])=>(
                     <div key={nome}>
                       <div className="cp-turno">{nome}</div>
