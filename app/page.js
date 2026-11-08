@@ -4924,6 +4924,8 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
 
     /* ── tela do Pix ── */
     .tt-pix{display:flex;align-items:center;justify-content:center;}
+    .tt-wrap.tt-pix{overflow-y:auto;}          /* tela muito pequena: rola em vez de cortar */
+    .tt-pix .tt-pixcard{margin:auto;}
     .tt-pixcard{width:100%;max-width:1000px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:clamp(22px,4vw,56px);align-items:center;
       padding:clamp(20px,3.6vh,44px) clamp(22px,3.6vw,52px);border-radius:34px;background:#fffdf9;color:#241d13;
       box-shadow:0 0 0 1px rgba(154,125,86,.14),0 40px 90px -36px rgba(120,80,30,.4),0 6px 20px rgba(70,45,15,.05);
@@ -4940,6 +4942,7 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
     .tt-pix-passos{list-style:none;margin:clamp(10px,1.8vh,18px) 0 0;padding:0;display:grid;gap:clamp(8px,1.3vh,12px);}
     .tt-pix-passos li{display:flex;gap:12px;align-items:flex-start;font:500 clamp(14.5px,2.1vh,17px)/1.45 'Manrope',sans-serif;color:#4a3a28;}
     .tt-pix-passos li>b{flex:0 0 26px;height:26px;margin-top:1px;border-radius:50%;display:grid;place-items:center;background:var(--dourado);color:#fff;font-size:13px;font-weight:800;}
+    .tt-pix-obs{display:block;margin-top:3px;font-size:.84em;line-height:1.4;color:var(--ink2);}
     .tt-pix-seguro{margin-top:clamp(12px,2.2vh,20px);padding:clamp(12px,2vh,16px) 18px;border-radius:18px;background:#f0f8f2;box-shadow:inset 0 0 0 1px rgba(58,122,74,.22);}
     .tt-pix-seguro .t{display:flex;align-items:center;gap:8px;font:800 clamp(14.5px,2vh,16px)/1.3 'Manrope',sans-serif;color:#2e6040;}
     .tt-pix-seguro ul{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:5px;}
@@ -4948,10 +4951,25 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
     .tt-pix-seguro .alerta{margin-top:10px;padding:9px 12px;border-radius:12px;background:#fdecec;color:#9b2c2c;font:600 clamp(13.5px,1.9vh,15px)/1.4 'Manrope',sans-serif;}
     .tt-pix-info .tt-go{margin-top:clamp(12px,2.2vh,20px);}
     @media (orientation:portrait){
+      .tt-wrap.tt-pix{padding-top:max(70px,env(safe-area-inset-top));}   /* cartão começa abaixo do Voltar */
       .tt-pixcard{grid-template-columns:minmax(0,1fr);max-width:620px;}
       .tt-pix-info{text-align:center;}
+      .tt-pix-info .tt-id-eyebrow{display:none;}
       .tt-pix-passos li,.tt-pix-seguro{text-align:left;}
-      .tt-pix-qr svg,.tt-pix-erro{width:min(36vh,70vw,400px);}
+      .tt-pix-qr svg,.tt-pix-erro{width:min(30vh,64vw,400px);}
+    }
+    @media (orientation:portrait) and (max-height:1100px){
+      .tt-pixcard{padding:18px 22px;gap:18px;border-radius:28px;}
+      .tt-pix-qr svg,.tt-pix-erro{width:min(28vh,60vw);}
+      .tt-pix-chave b{font-size:22px;}
+      .tt-pix-info .tt-idtitle{font-size:26px;margin:0 0 4px;}
+      .tt-pix-passos{margin-top:8px;gap:6px;}
+      .tt-pix-passos li{font-size:14px;line-height:1.4;}
+      .tt-pix-seguro{margin-top:10px;padding:11px 14px;}
+      .tt-pix-seguro .t{font-size:14px;}
+      .tt-pix-seguro li{font-size:14px;}
+      .tt-pix-seguro .alerta{font-size:13px;margin-top:8px;padding:8px 10px;}
+      .tt-pix-info .tt-go{height:52px;margin-top:12px;}
     }
 
     /* sair / voltar */
@@ -5062,7 +5080,7 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
               <div className="tt-id-eyebrow">{salonName}</div>
               <div className="tt-idtitle">Pagar com Pix</div>
               <ol className="tt-pix-passos">
-                <li><b>1</b><span>Aponte a <strong>câmera do celular</strong> para o QR Code — ou, no app do banco, use <strong>Pix → Ler QR Code</strong>.</span></li>
+                <li><b>1</b><span>Abra o <strong>app do seu banco</strong> e toque em <strong>Pix → Ler QR Code</strong>.<span className="tt-pix-obs">Em muitos Android, a câmera do celular já abre o pagamento direto. No iPhone, use o app do banco.</span></span></li>
                 <li><b>2</b><span>Digite o valor do seu atendimento.</span></li>
                 <li><b>3</b><span>Na tela de pagamento, <strong>confira quem recebe</strong> antes de confirmar.</span></li>
               </ol>
