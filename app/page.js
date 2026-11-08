@@ -5062,12 +5062,12 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
               <div className="tt-id-eyebrow">{salonName}</div>
               <div className="tt-idtitle">Pagar com Pix</div>
               <ol className="tt-pix-passos">
-                <li><b>1</b><span>Abra o app do seu banco e toque em <strong>Pix → Ler QR Code</strong>.</span></li>
-                <li><b>2</b><span>Aponte a câmera para o QR Code.</span></li>
-                <li><b>3</b><span>Digite o valor do seu atendimento.</span></li>
+                <li><b>1</b><span>Aponte a <strong>câmera do celular</strong> para o QR Code — ou, no app do banco, use <strong>Pix → Ler QR Code</strong>.</span></li>
+                <li><b>2</b><span>Digite o valor do seu atendimento.</span></li>
+                <li><b>3</b><span>Na tela de pagamento, <strong>confira quem recebe</strong> antes de confirmar.</span></li>
               </ol>
               <div className="tt-pix-seguro">
-                <div className="t"><TtIco.cadeado/> Antes de confirmar, confira no app do banco:</div>
+                <div className="t"><TtIco.cadeado/> Antes de confirmar o pagamento, confira:</div>
                 <ul>
                   <li><i>✓</i>Quem recebe: <strong>Morgane Faoli</strong></li>
                   <li><i>✓</i>CNPJ: <strong>{PIX.cnpj}</strong></li>
