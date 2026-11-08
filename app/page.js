@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { PIX, pixConferido } from '../lib/pix.js'
 
 // ── Proxy de dados ─────────────────────────────────────
 // Imita a fatia da API do Supabase que o app usa, mas roteia todas as
@@ -4608,6 +4609,8 @@ const TtIco={
   cal:()=>(<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="3.2"/><path d="M3.5 10h17M8 3v4M16 3v4"/><path d="M7.8 13.6h2M11.8 13.6h2M15.8 13.6h.4M7.8 17h2M11.8 17h2"/></svg>),
   seta:({esq})=>(<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{esq?<path d="M15 5l-7 7 7 7"/>:<path d="M9 5l7 7-7 7"/>}</svg>),
   sair:()=>(<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 4h3.5A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5H14"/><path d="M10 16l-4-4 4-4M6 12h10"/></svg>),
+  qr:()=>(<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1.6"/><rect x="14" y="3.5" width="6.5" height="6.5" rx="1.6"/><rect x="3.5" y="14" width="6.5" height="6.5" rx="1.6"/><path d="M14 14h2.6v2.6H14zM17.9 17.9h2.6v2.6h-2.6zM17.9 14h2.6M14 17.9v2.6"/></svg>),
+  cadeado:()=>(<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.8a4 4 0 0 1 8 0v2.7"/></svg>),
   apagar:()=>(<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8.5 5H19a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8.5L3 12z"/><path d="M11.5 9.5l5 5M16.5 9.5l-5 5"/></svg>),
 }
 
@@ -4640,6 +4643,11 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
   const stripRef=useRef(null)
   const toque=useRef(null)
   useBrilhoVidro()
+  // Pix: gerado e conferido aqui no aparelho (chave fixa no código — lib/pix.js)
+  const pix=useMemo(()=>{
+    const r=pixConferido()
+    return r.ok?{...r,caminho:r.modulos.map(([c,l])=>`M${c} ${l}h1v1h-1z`).join('')}:r
+  },[])
 
   useEffect(()=>{
     let vivo=true
@@ -4777,7 +4785,9 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
       grid-template-areas:"stage brand" "stage info" "thumbs badges" "cta cta";
       column-gap:clamp(18px,2.2vw,30px);row-gap:clamp(12px,2.2vh,20px);}
     .tt-brand{grid-area:brand;} .tt-stage{grid-area:stage;} .tt-thumbs{grid-area:thumbs;}
-    .tt-info{grid-area:info;} .tt-badges{grid-area:badges;} .tt-cta{grid-area:cta;}
+    .tt-info{grid-area:info;} .tt-badges{grid-area:badges;} .tt-acoes{grid-area:cta;}
+    .tt-acoes{display:flex;gap:clamp(10px,1.4vw,16px);min-width:0;}
+    .tt-acoes .tt-cta{flex:1;min-width:0;}
 
     /* marca */
     .tt-brand{text-align:center;padding-top:clamp(4px,1.2vh,14px);}
@@ -4901,6 +4911,49 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
     .tt-cta-go svg{animation:tt-cutuca 4s 3s var(--saida) infinite;}
     @keyframes tt-cutuca{0%,80%,100%{transform:none}87%{transform:translateX(5px)}94%{transform:translateX(-1px)}}
 
+    /* botão Pagar com Pix */
+    .tt-pixbtn{position:relative;flex:0 0 auto;display:flex;align-items:center;gap:12px;border:0;border-radius:999px;cursor:pointer;
+      padding:0 clamp(18px,2.2vw,30px) 0 clamp(10px,1vw,14px);color:var(--marrom);text-align:left;}
+    .tt-pixbtn.vidro-claro{background:linear-gradient(180deg,#fff,rgba(255,252,246,.92));
+      box-shadow:inset 0 1px 1px #fff,inset 0 0 0 1px rgba(154,125,86,.16),0 16px 34px -16px rgba(110,72,25,.4);}
+    .tt-pixbtn .ic{flex:0 0 auto;width:clamp(44px,6.4vh,58px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;
+      color:#1f9c8f;background:linear-gradient(160deg,#e8f7f4,#d5efea);box-shadow:inset 0 1px 0 #fff;}
+    .tt-pixbtn b{display:block;font:800 clamp(15px,1.45vw,19px)/1.15 'Manrope',sans-serif;letter-spacing:-.01em;}
+    .tt-pixbtn small{display:block;margin-top:3px;font:500 clamp(11.5px,1vw,13px)/1.2 'Manrope',sans-serif;color:var(--ink2);}
+    @media (max-width:700px){.tt-pixbtn small{display:none;}}
+
+    /* ── tela do Pix ── */
+    .tt-pix{display:flex;align-items:center;justify-content:center;}
+    .tt-pixcard{width:100%;max-width:1000px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:clamp(22px,4vw,56px);align-items:center;
+      padding:clamp(20px,3.6vh,44px) clamp(22px,3.6vw,52px);border-radius:34px;background:#fffdf9;color:#241d13;
+      box-shadow:0 0 0 1px rgba(154,125,86,.14),0 40px 90px -36px rgba(120,80,30,.4),0 6px 20px rgba(70,45,15,.05);
+      animation:tt-card-in .7s var(--saida) backwards;}
+    .tt-pix-qr{display:flex;flex-direction:column;align-items:center;gap:clamp(10px,1.6vh,16px);}
+    .tt-pix-qr svg{display:block;width:min(48vh,400px);height:auto;aspect-ratio:1;border-radius:20px;background:#fff;
+      box-shadow:0 0 0 1px rgba(154,125,86,.18),0 16px 34px -16px rgba(110,72,25,.4);}
+    .tt-pix-erro{width:min(48vh,400px);aspect-ratio:1;border-radius:20px;display:grid;place-items:center;text-align:center;padding:24px;
+      background:#fdecec;color:#9b2c2c;font:600 15px/1.5 'Manrope',sans-serif;}
+    .tt-pix-chave{text-align:center;}
+    .tt-pix-chave span{display:block;font:700 11px/1.4 'Manrope',sans-serif;letter-spacing:.24em;text-transform:uppercase;color:#a87b35;}
+    .tt-pix-chave b{display:block;margin-top:4px;font:800 clamp(22px,3.4vh,28px)/1.1 'Manrope',sans-serif;letter-spacing:.02em;font-variant-numeric:tabular-nums;color:#241d13;}
+    .tt-pix-info .tt-idtitle{margin-top:8px;}
+    .tt-pix-passos{list-style:none;margin:clamp(10px,1.8vh,18px) 0 0;padding:0;display:grid;gap:clamp(8px,1.3vh,12px);}
+    .tt-pix-passos li{display:flex;gap:12px;align-items:flex-start;font:500 clamp(14.5px,2.1vh,17px)/1.45 'Manrope',sans-serif;color:#4a3a28;}
+    .tt-pix-passos li>b{flex:0 0 26px;height:26px;margin-top:1px;border-radius:50%;display:grid;place-items:center;background:var(--dourado);color:#fff;font-size:13px;font-weight:800;}
+    .tt-pix-seguro{margin-top:clamp(12px,2.2vh,20px);padding:clamp(12px,2vh,16px) 18px;border-radius:18px;background:#f0f8f2;box-shadow:inset 0 0 0 1px rgba(58,122,74,.22);}
+    .tt-pix-seguro .t{display:flex;align-items:center;gap:8px;font:800 clamp(14.5px,2vh,16px)/1.3 'Manrope',sans-serif;color:#2e6040;}
+    .tt-pix-seguro ul{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:5px;}
+    .tt-pix-seguro li{font:500 clamp(14px,2vh,16px)/1.4 'Manrope',sans-serif;color:#2b3a2e;}
+    .tt-pix-seguro li i{font-style:normal;font-weight:800;color:#3a7a4a;margin-right:6px;}
+    .tt-pix-seguro .alerta{margin-top:10px;padding:9px 12px;border-radius:12px;background:#fdecec;color:#9b2c2c;font:600 clamp(13.5px,1.9vh,15px)/1.4 'Manrope',sans-serif;}
+    .tt-pix-info .tt-go{margin-top:clamp(12px,2.2vh,20px);}
+    @media (orientation:portrait){
+      .tt-pixcard{grid-template-columns:minmax(0,1fr);max-width:620px;}
+      .tt-pix-info{text-align:center;}
+      .tt-pix-passos li,.tt-pix-seguro{text-align:left;}
+      .tt-pix-qr svg,.tt-pix-erro{width:min(36vh,70vw,400px);}
+    }
+
     /* sair / voltar */
     .tt-exit,.tt-back{position:fixed;top:max(14px,env(safe-area-inset-top));z-index:10;display:flex;align-items:center;gap:8px;height:44px;
       padding:0 18px 0 14px;border:0;border-radius:999px;font:600 14px/1 'Manrope',sans-serif;cursor:pointer;}
@@ -4983,6 +5036,52 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
       .tt-info-item.out{animation:none;opacity:0;}
     }
   `
+
+  // ── Pagar com Pix: QR + chave CNPJ + o que conferir no app do banco ──
+  if(view==='pix'){
+    const lado=pix.ok?pix.n+8:0
+    return(
+      <>
+        <style>{G}</style>
+        <style>{TOTEM_CSS}</style>
+        <div className="tt-wrap tt-pix">
+          <button className="tt-back vidro vidro-claro" onClick={voltarTotem}><TtIco.seta esq/> Voltar</button>
+          <div className="tt-pixcard">
+            <div className="tt-pix-qr">
+              {pix.ok?(
+                <svg viewBox={`-4 -4 ${lado} ${lado}`} shapeRendering="crispEdges" role="img" aria-label={'QR Code Pix — CNPJ '+PIX.cnpj}>
+                  <rect x="-4" y="-4" width={lado} height={lado} fill="#fff"/>
+                  <path d={pix.caminho} fill="#1c130a"/>
+                </svg>
+              ):(
+                <div className="tt-pix-erro">Pix indisponível neste aparelho. Peça a chave para a Morgane.</div>
+              )}
+              <div className="tt-pix-chave"><span>Chave Pix · CNPJ</span><b>{PIX.cnpj}</b></div>
+            </div>
+            <div className="tt-pix-info">
+              <div className="tt-id-eyebrow">{salonName}</div>
+              <div className="tt-idtitle">Pagar com Pix</div>
+              <ol className="tt-pix-passos">
+                <li><b>1</b><span>Abra o app do seu banco e toque em <strong>Pix → Ler QR Code</strong>.</span></li>
+                <li><b>2</b><span>Aponte a câmera para o QR Code.</span></li>
+                <li><b>3</b><span>Digite o valor do seu atendimento.</span></li>
+              </ol>
+              <div className="tt-pix-seguro">
+                <div className="t"><TtIco.cadeado/> Antes de confirmar, confira no app do banco:</div>
+                <ul>
+                  <li><i>✓</i>Quem recebe: <strong>Morgane Faoli</strong></li>
+                  <li><i>✓</i>CNPJ: <strong>{PIX.cnpj}</strong></li>
+                  <li><i>✓</i>Valor: o combinado com a Morgane</li>
+                </ul>
+                <div className="alerta">Apareceu outro nome ou outro CNPJ? <strong>Não confirme</strong> e chame a Morgane.</div>
+              </div>
+              <button className="tt-go" onClick={voltarTotem}>Pronto</button>
+            </div>
+          </div>
+        </div>
+      </>
+    )
+  }
 
   // ── Tela de identificação (telefone → nome) ──
   if(view==='id'){
@@ -5143,7 +5242,8 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
           </div>
         )}
 
-        {/* CTA dourado */}
+        {/* CTA dourado + Pagar com Pix */}
+        <div className="tt-acoes">
         <button className="tt-cta tt-in" style={{'--d':'.32s'}} onClick={abrirAgendar}>
           <span className="tt-cta-ic vidro vidro-claro"><TtIco.cal/></span>
           <span className="tt-cta-text">
@@ -5152,6 +5252,11 @@ function Mesa({onExit,salonName='Morgane Faoli Nail Style'}){
           </span>
           <span className="tt-cta-go vidro vidro-claro"><TtIco.seta/></span>
         </button>
+        <button className="tt-pixbtn vidro vidro-claro tt-in" style={{'--d':'.4s'}} onClick={()=>setView('pix')}>
+          <span className="ic"><TtIco.qr/></span>
+          <span><b>Pagar com Pix</b><small>QR Code · chave CNPJ</small></span>
+        </button>
+        </div>
       </div>
     </>
   )
