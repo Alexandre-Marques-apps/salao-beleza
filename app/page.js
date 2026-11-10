@@ -318,6 +318,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 .kpi-bar-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,${T.primary},${T.primaryLight} 45%,#fff6e2 50%,${T.primaryLight} 55%,${T.primary});background-size:220% 100%;animation:shimmer 3.2s linear infinite;}
 
 /* BUTTONS */
+.btn:disabled{opacity:.6;cursor:wait;transform:none!important;filter:none!important;}
 .btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:11px 20px;border:none;border-radius:11px;font-family:'Manrope',sans-serif;font-size:12px;font-weight:600;cursor:pointer;transition:transform .18s var(--spring),box-shadow .18s var(--ease),background .18s,filter .18s;white-space:nowrap;overflow:hidden;}
 .btn:active{transform:scale(.96);}
 .btn-primary{background:linear-gradient(135deg,${T.primaryDeep},${T.primary} 45%,${T.primaryLight});color:#fff;box-shadow:0 4px 16px rgba(138,87,25,.30);}
@@ -576,6 +577,15 @@ function Admin({onLogout,onMesa,salonName='Morgane Faoli Nail Style',adminName='
   const [modal,setModal]=useState(null)
   const [form,setForm]=useState({})
   const [ferr,setFerr]=useState('')
+  // Trava de salvamento: enquanto um salvamento está em andamento, outro toque
+  // é ignorado (um toque duplo no "Salvar" gravava o agendamento duas vezes).
+  const travaRef=useRef(false)
+  const [salvando,setSalvando]=useState(false)
+  const umaVez=fn=>async(...args)=>{
+    if(travaRef.current)return
+    travaRef.current=true;setSalvando(true)
+    try{return await fn(...args)}finally{travaRef.current=false;setSalvando(false)}
+  }
   const [ld,setLd]=useState(false)
   const [ags,setAgs]=useState([])
   const [clients,setClients]=useState([])
@@ -703,7 +713,8 @@ function Admin({onLogout,onMesa,salonName='Morgane Faoli Nail Style',adminName='
   const cancelCount=cancelamentos.filter(a=>_horasDesde(a.cancelledAt)<=48).length
 
   async function aprovarSol(id){
-    await supabase.from('salon_bookings').update({status:'scheduled'}).eq('id',id)
+    const{error}=await supabase.from('salon_bookings').update({status:'scheduled'}).eq('id',id)
+    if(error){toast2(error.message,false);load();return}
     toast2('Agendamento aprovado! ✓');load()
   }
   async function recusarSol(id){
@@ -1518,8 +1529,8 @@ function Admin({onLogout,onMesa,salonName='Morgane Faoli Nail Style',adminName='
                         <div style={{fontSize:12,color:T.primary,marginTop:2,fontWeight:600}}>{fmtCurrency(a.price)}</div>
                       </div>
                       <div style={{display:'flex',flexDirection:'column',gap:6,flexShrink:0}}>
-                        <button className="btn btn-success btn-sm" onClick={()=>aprovarSol(a.id)}>✓ Aprovar</button>
-                        <button className="btn btn-danger btn-sm" onClick={()=>recusarSol(a.id)}>✕ Recusar</button>
+                        <button className="btn btn-success btn-sm" onClick={umaVez(()=>aprovarSol(a.id))} disabled={salvando}>✓ Aprovar</button>
+                        <button className="btn btn-danger btn-sm" onClick={umaVez(()=>recusarSol(a.id))} disabled={salvando}>✕ Recusar</button>
                       </div>
                     </div>
                   ))}
@@ -1881,7 +1892,7 @@ function Admin({onLogout,onMesa,salonName='Morgane Faoli Nail Style',adminName='
           <Sel v={form.service_name||''} set={F('service_name')}><option value="">Selecionar serviço…</option>{srvsFor(form.professional_name).map(s=><option key={s.id} value={s.name}>{s.name} ({s.duration_min}min)</option>)}</Sel>
           {ferr&&<Alert type="danger" c={ferr}/>}
           <div style={{display:'flex',gap:10,marginTop:20}}>
-            <button className="btn btn-primary" style={{flex:1}} onClick={saveAg}>Salvar</button>
+            <button className="btn btn-primary" style={{flex:1}} onClick={umaVez(saveAg)} disabled={salvando}>Salvar</button>
             <button className="btn btn-ghost" onClick={closeM}>Cancelar</button>
           </div>
         </Modal>
@@ -1898,7 +1909,7 @@ function Admin({onLogout,onMesa,salonName='Morgane Faoli Nail Style',adminName='
           <Lbl c="Horário *"/><Sel v={form.time} set={F('time')}><option value="">Selecionar…</option>{freeSlotsFor(form.professional_name,form.dmy).map(h=><option key={h}>{h}</option>)}</Sel>
           {ferr&&<Alert type="danger" c={ferr}/>}
           <div style={{display:'flex',gap:10,marginTop:20}}>
-            <button className="btn btn-primary" style={{flex:1}} onClick={saveAg}>Salvar</button>
+            <button className="btn btn-primary" style={{flex:1}} onClick={umaVez(saveAg)} disabled={salvando}>Salvar</button>
             <button className="btn btn-ghost" onClick={closeM}>Cancelar</button>
           </div>
         </Modal>
@@ -1925,7 +1936,7 @@ function Admin({onLogout,onMesa,salonName='Morgane Faoli Nail Style',adminName='
           </Sel>
           {ferr&&<Alert type="danger" c={ferr}/>}
           <div style={{display:'flex',gap:10,marginTop:20}}>
-            <button className="btn btn-primary" style={{flex:1,background:'linear-gradient(135deg,#3a7a4a,#2e6040)'}} onClick={saveEncaixe}>✓ Registrar</button>
+            <button className="btn btn-primary" style={{flex:1,background:'linear-gradient(135deg,#3a7a4a,#2e6040)'}} onClick={umaVez(saveEncaixe)} disabled={salvando}>✓ Registrar</button>
             <button className="btn btn-ghost" onClick={closeM}>Cancelar</button>
           </div>
         </Modal>
@@ -1989,7 +2000,7 @@ function Admin({onLogout,onMesa,salonName='Morgane Faoli Nail Style',adminName='
             )}
             {ferr&&<Alert type="danger" c={ferr}/>}
             <div style={{display:'flex',gap:10,marginTop:20}}>
-              <button className="btn btn-primary" style={{flex:1,background:'linear-gradient(135deg,#b33a3a,#8e2c2c)'}} onClick={salvarFechamento}>🚫 Fechar agenda</button>
+              <button className="btn btn-primary" style={{flex:1,background:'linear-gradient(135deg,#b33a3a,#8e2c2c)'}} onClick={umaVez(salvarFechamento)} disabled={salvando}>🚫 Fechar agenda</button>
               <button className="btn btn-ghost" onClick={closeM}>Cancelar</button>
             </div>
           </Modal>
@@ -2012,7 +2023,7 @@ function Admin({onLogout,onMesa,salonName='Morgane Faoli Nail Style',adminName='
           </Sel>
           {ferr&&<Alert type="danger" c={ferr}/>}
           <div style={{display:'flex',gap:10,marginTop:20}}>
-            <button className="btn btn-primary" style={{flex:1,background:'linear-gradient(135deg,#3a7a4a,#2e6040)'}} onClick={closeAg}>✓ Confirmar</button>
+            <button className="btn btn-primary" style={{flex:1,background:'linear-gradient(135deg,#3a7a4a,#2e6040)'}} onClick={umaVez(closeAg)} disabled={salvando}>✓ Confirmar</button>
             <button className="btn btn-ghost" onClick={closeM}>Cancelar</button>
           </div>
         </Modal>
@@ -2029,7 +2040,7 @@ function Admin({onLogout,onMesa,salonName='Morgane Faoli Nail Style',adminName='
           )}
           {ferr&&<Alert type="danger" c={ferr}/>}
           <div style={{display:'flex',gap:10,marginTop:20}}>
-            <button className="btn btn-primary" style={{flex:1}} onClick={saveValorFinalizado}>Salvar</button>
+            <button className="btn btn-primary" style={{flex:1}} onClick={umaVez(saveValorFinalizado)} disabled={salvando}>Salvar</button>
             <button className="btn btn-ghost" onClick={closeM}>Cancelar</button>
           </div>
         </Modal>
@@ -2043,7 +2054,7 @@ function Admin({onLogout,onMesa,salonName='Morgane Faoli Nail Style',adminName='
           <Lbl c="E-mail"/><Inp v={form.email} set={F('email')} ph="email@email.com"/>
           {ferr&&<Alert type="danger" c={ferr}/>}
           <div style={{display:'flex',gap:10,marginTop:20}}>
-            <button className="btn btn-primary" style={{flex:1}} onClick={saveCli}>Salvar</button>
+            <button className="btn btn-primary" style={{flex:1}} onClick={umaVez(saveCli)} disabled={salvando}>Salvar</button>
             <button className="btn btn-ghost" onClick={closeM}>Cancelar</button>
           </div>
         </Modal>
@@ -2073,7 +2084,7 @@ function Admin({onLogout,onMesa,salonName='Morgane Faoli Nail Style',adminName='
           {!form.id&&<Alert type="info" c="🔑 Senha de acesso padrão: 123456"/>}
           {ferr&&<Alert type="danger" c={ferr}/>}
           <div style={{display:'flex',gap:10,marginTop:20}}>
-            <button className="btn btn-primary" style={{flex:1}} onClick={saveProf}>Salvar</button>
+            <button className="btn btn-primary" style={{flex:1}} onClick={umaVez(saveProf)} disabled={salvando}>Salvar</button>
             <button className="btn btn-ghost" onClick={closeM}>Cancelar</button>
           </div>
         </Modal>
@@ -2094,7 +2105,7 @@ function Admin({onLogout,onMesa,salonName='Morgane Faoli Nail Style',adminName='
           <Lbl c="Duração (min)"/><Inp v={form.duration_min} set={F('duration_min')} type="number" ph="30"/>
           {ferr&&<Alert type="danger" c={ferr}/>}
           <div style={{display:'flex',gap:10,marginTop:20}}>
-            <button className="btn btn-primary" style={{flex:1}} onClick={saveSrv}>Salvar</button>
+            <button className="btn btn-primary" style={{flex:1}} onClick={umaVez(saveSrv)} disabled={salvando}>Salvar</button>
             <button className="btn btn-ghost" onClick={closeM}>Cancelar</button>
           </div>
         </Modal>
@@ -2130,7 +2141,7 @@ function Admin({onLogout,onMesa,salonName='Morgane Faoli Nail Style',adminName='
           </Sel>
           {ferr&&<Alert type="danger" c={ferr}/>}
           <div style={{display:'flex',gap:10,marginTop:20}}>
-            <button className="btn btn-primary" style={{flex:1}} onClick={saveEditAg}>Salvar Alteração</button>
+            <button className="btn btn-primary" style={{flex:1}} onClick={umaVez(saveEditAg)} disabled={salvando}>Salvar Alteração</button>
             <button className="btn btn-ghost" onClick={closeM}>Cancelar</button>
           </div>
         </Modal>
@@ -3323,6 +3334,7 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
   useBrilhoVidro()
   const fileRef=useRef(null)
   const gota=useRef({ultimo:null,n:-1})
+  const enviandoRef=useRef(false)
   const heroRef=useRef(null),ultimaFotoRef=useRef(null),segRef=useRef(null),passoSrvRef=useRef(null),passoDataRef=useRef(null),rolouRef=useRef(false)
   const [,setFuncTick]=useState(0)
   const [portal,setPortal]=useState(DEFAULT_PORTAL)
@@ -3453,6 +3465,11 @@ function PortalCliente({cliente,onLogout,salonName='Morgane Faoli Nail Style'}){
   }
 
   async function confirmar(){
+    if(enviandoRef.current)return
+    enviandoRef.current=true
+    try{ await confirmarAgora() }finally{ enviandoRef.current=false }
+  }
+  async function confirmarAgora(){
     setSending(true);setErr('')
     const{error}=await supabase.from('salon_bookings').insert({
       client_name:cliente.full_name,

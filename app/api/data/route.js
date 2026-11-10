@@ -51,6 +51,44 @@ const SETTINGS_LEITURA = new Set(['funcionamento', 'portal', 'mesa'])
 
 const negado = (erro = 'Acesso negado', status = 403) => json({ ok: false, erro }, { status })
 
+// ── Trava de encavalamento para quem grava pelo painel (ADM e profissional) ──
+// Manicure/sobrancelha: nenhum horário encavalado. Cabeleireiro: até 2 ao mesmo
+// tempo, nunca no mesmo minuto. Só vale para agendamentos ativos (agendado ou
+// aguardando): o encaixe lança como concluído um atendimento que já aconteceu.
+const ATIVOS = new Set(['scheduled', 'pending'])
+const minutos = h => { const [H, M] = String(h || '00:00').slice(0, 5).split(':').map(Number); return H * 60 + M }
+async function conflitoAgenda(supabase, b, ignorarId) {
+  if (!ATIVOS.has(b.status) || !b.professional_name || !b.booking_date || !b.start_time) return null
+  const { data: ps } = await supabase.from('salon_professionals').select('tipo').eq('full_name', b.professional_name).limit(1)
+  const cab = ps?.[0]?.tipo === 'cabelereiro'
+  const ini = minutos(b.start_time), fim = ini + (Number(b.duration_min) || 30)
+  const { data: doDia } = await supabase.from('salon_bookings').select('id,start_time,duration_min')
+    .eq('professional_name', b.professional_name).eq('booking_date', b.booking_date).neq('status', 'cancelled')
+  const outros = (doDia || []).filter(a => a.id !== ignorarId)
+  const encavalados = outros.filter(a => { const i = minutos(a.start_time); return ini < i + (Number(a.duration_min) || 30) && fim > i }).length
+  const mesmoMinuto = outros.some(a => minutos(a.start_time) === ini)
+  if (cab ? (mesmoMinuto || encavalados >= 2) : encavalados >= 1) {
+    return `${b.professional_name} já tem agendamento nesse horário. Atualize a agenda e escolha outro.`
+  }
+  return null
+}
+// remarcação/aprovação: junta o que muda com o que já está gravado e confere
+const CAMPOS_HORARIO = ['booking_date', 'start_time', 'professional_name', 'duration_min']
+async function conflitoNaAlteracao(supabase, filters, mudancas) {
+  const mexeHorario = CAMPOS_HORARIO.some(k => k in mudancas)
+  if (!mexeHorario && !ATIVOS.has(mudancas.status)) return null
+  const { data: linhas } = await applyFilters(
+    supabase.from('salon_bookings').select('id,professional_name,booking_date,start_time,duration_min,status'), filters)
+  for (const l of linhas || []) {
+    const c = await conflitoAgenda(supabase, { ...l, ...mudancas }, l.id)
+    if (c) return c
+  }
+  return null
+}
+// a regra do banco contra registro repetido (mesma profissional, dia, hora, cliente e serviço)
+const repetido = error => error?.code === '23505'
+const MSG_REPETIDO = 'Esse agendamento já estava salvo — não foi gravado de novo.'
+
 function pick(obj, cols) {
   const out = {}
   for (const k of cols) if (obj?.[k] !== undefined) out[k] = obj[k]
@@ -158,7 +196,11 @@ async function insert(supabase, ctx, b) {
     if (!cols) return negado('Tabela não gravável')
     const linhas = Array.isArray(payload) ? payload : [payload]
     const limpas = await Promise.all(linhas.map(p => protegerSenha(pick(p, cols))))
+    if (table === 'salon_bookings') {
+      for (const l of limpas) { const c = await conflitoAgenda(supabase, l, null); if (c) return negado(c, 409) }
+    }
     const { data, error } = await supabase.from(table).insert(Array.isArray(payload) ? limpas : limpas[0]).select()
+    if (repetido(error)) return negado(MSG_REPETIDO, 409)
     return json({ ok: !error, data: data || null, erro: error?.message })
   }
   if (!payload || Array.isArray(payload)) return negado()
@@ -170,7 +212,9 @@ async function insert(supabase, ctx, b) {
     } else if (table === 'salon_blocks') {
       linha = { ...pick(payload, WRITABLE.salon_blocks), professional_name: ctx.nome }
     } else return negado()
+    if (table === 'salon_bookings') { const c = await conflitoAgenda(supabase, linha, null); if (c) return negado(c, 409) }
     const { data, error } = await supabase.from(table).insert(linha).select()
+    if (repetido(error)) return negado(MSG_REPETIDO, 409)
     return json({ ok: !error, data: data || null, erro: error?.message })
   }
 
@@ -205,6 +249,7 @@ async function insert(supabase, ctx, b) {
       reference_photo: typeof payload.reference_photo === 'string' ? payload.reference_photo : null,
     }
     const { data: criado, error } = await supabase.from('salon_bookings').insert(linha).select()
+    if (repetido(error)) return negado('Esse pedido já foi enviado.', 409)
     return json({ ok: !error, data: criado || null, erro: error?.message })
   }
   return negado()
@@ -229,8 +274,10 @@ async function update(supabase, ctx, b) {
     const cols = WRITABLE[table]
     if (!cols) return negado('Tabela não gravável')
     limpo = await protegerSenha(pick(payload, cols))
+    if (table === 'salon_bookings') { const c = await conflitoNaAlteracao(supabase, filters, limpo); if (c) return negado(c, 409) }
     let q = applyFilters(supabase.from(table).update(limpo), filters)
     const { data, error } = await q.select()
+    if (repetido(error)) return negado(MSG_REPETIDO, 409)
     return json({ ok: !error, data: data || null, erro: error?.message })
   }
 
@@ -239,8 +286,10 @@ async function update(supabase, ctx, b) {
     limpo = table === 'salon_bookings'
       ? pick(payload, PROF_BOOKING_UPDATE)
       : { ...pick(payload, WRITABLE.salon_blocks), professional_name: ctx.nome }
+    if (table === 'salon_bookings') { const c = await conflitoNaAlteracao(supabase, forcar(filters, 'professional_name', ctx.nome), limpo); if (c) return negado(c, 409) }
     let q = applyFilters(supabase.from(table).update(limpo), forcar(filters, 'professional_name', ctx.nome))
     const { data, error } = await q.select()
+    if (repetido(error)) return negado(MSG_REPETIDO, 409)
     return json({ ok: !error, data: data || null, erro: error?.message })
   }
   return negado()
